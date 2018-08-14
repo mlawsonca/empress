@@ -30,12 +30,12 @@
 EMPRESS Dependencies
 =====================================================
 
-1). Data Warehouse / Faodel. EMPRESS relies on Sandia's Data Warehouse / Faodel library for message passing between clients and servers. 
-    This library will be publically released shortly on git. 
-	a). see data-warehouse/INSTALL.md and data-warehouse/INSTALL_TPL.md for information about building Data Warehouse and for its list of dependencies 
-		i). note that in addition to the dependencies listed there, zlib is also required for Data Warehouse/Faodel
+1). Faodel. EMPRESS relies on Sandia's Faodel library for message passing between clients and servers. 
+    This library is posted on github:  https://github.com/faodel/faodel 
+	a). see faodel/INSTALL.md for information about building Faodek and for its list of dependencies 
+		i). note that in addition to the dependencies listed there, zlib is also required for Faodel
 
-	b). Note that several external libraries required by Data Warehouse / Faodel are also required by EMPRESS (cmake 3.2+, boost 1.60+, openmpi, gcc 4.9+)
+	b). Note that several external libraries required by Faodel are also required by EMPRESS (cmake 3.2+, boost 1.60+, openmpi, gcc 4.9+)
 
 2). sqlite3. The build is configured to use the sqlite3 amalgamation with sqlite3.h in include/database and sqlite3.c in lib_source/database. 
     This code can be downloaded from https://www.sqlite.org/download.html
@@ -56,7 +56,7 @@ make
 =====================================================
 
 note: cmake may require some parameters:
-1). if Data Warehouse / Faodel is not installed as "data-warehouse-release" in the home directory, this -DDATA_WAREHOUSE_SOURCE_DIR will need to be set to the directory's location
+1). if Faodel is not installed as "data-warehouse-release" in the home directory, this -DDATA_WAREHOUSE_SOURCE_DIR will need to be set to the directory's location
 
 2). if boost or google test are not installed in data-warehouse-release/tpl, -DDATA_WAREHOUSE_TPL_INSTALL_DIR will need to be set to this install location
 
