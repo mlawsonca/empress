@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,8 +26,10 @@
  * THE SOFTWARE.
  */
 
+
+#include <md_client_timing_constants.hh>
 #include <OpFullShutdownMetaCommon.hh>
-#include <client_timing_constants.hh>
+
 #include <chrono>
 
 using namespace std;
@@ -43,15 +45,14 @@ WaitingType OpFullShutdownMeta::UpdateOrigin(OpArgs &args, results_t *results) {
   case State::start:
     net::SendMsg(peer, ldo_msg);
     state=State::done;
-    // time_pts.push_back(chrono::high_resolution_clock::now());
-    // catg_of_time_pts.push_back(OP_FULL_SHUTDOWN_SEND_MSG_TO_SERVER_OP_DONE);  
+    // add_timing_point(OP_FULL_SHUTDOWN_SEND_MSG_TO_SERVER_OP_DONE); 
 
-  case State::done:
-    return WaitingType::done_and_destroy;
-  }
+	case State::done:
+    	return WaitingType::done_and_destroy;
+  	}
 
   KFAIL();
-  return WaitingType::error;
+	return WaitingType::error;
 
 }
 
@@ -63,14 +64,12 @@ WaitingType OpFullShutdownMeta::UpdateTarget(OpArgs &, results_t *) {
 OpFullShutdownMeta::OpFullShutdownMeta(net::peer_ptr_t dst) 
   : state(State::start), ldo_msg(nullptr), Op(true) {
     peer = dst;
-    // time_pts.push_back(chrono::high_resolution_clock::now());
-    // catg_of_time_pts.push_back(OP_FULL_SHUTDOWN_START);
+    // add_timing_point(OP_FULL_SHUTDOWN_START);
 
     createOutgoingMessage(net::ConvertPeerToNodeID(dst), 
                           GetAssignedMailbox(), 
                           0);
-    // time_pts.push_back(chrono::high_resolution_clock::now());
-    // catg_of_time_pts.push_back(OP_FULL_SHUTDOWN_CREATE_MSG_FOR_SERVER);
+    // add_timing_point(OP_FULL_SHUTDOWN_CREATE_MSG_FOR_SERVER);
   //Work picks up again in Server's state machine
 
   }

@@ -1,22 +1,22 @@
-#[[
+#[[ 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -51,10 +51,11 @@ endif()
 
 set(SOURCE_FILES
   read_testing_output_one_output.cpp
-  read_clients_output_one_output.cpp
-  read_servers_output_one_output.cpp
-  read_dirmans_output_one_output.cpp
-  stats_functions.cpp
+  read_write_clients_output_new_new.cpp  
+  # read_write_clients_output.cpp  
+  read_read_clients_output.cpp  
+  read_servers_output_one_output.cpp  
+  read_dirmans_output_one_output.cpp  
 )
 
 set(HEADERS
@@ -65,3 +66,5 @@ set(HEADERS
 
 add_executable(read_output ${SOURCE_FILES} ${HEADERS})
 set_target_properties(read_output PROPERTIES LINKER_LANGUAGE CXX )
+
+  

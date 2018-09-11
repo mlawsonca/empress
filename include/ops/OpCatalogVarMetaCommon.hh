@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -25,6 +25,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 
 #ifndef OPCATALOGVARMETA_HH
 #define OPCATALOGVARMETA_HH
@@ -38,13 +39,15 @@
 #include <iostream>
 #include "opbox/OpBox.hh"
 #include "lunasa/DataObject.hh"
-#include <chrono>
+// #include <chrono>
 #include <my_metadata_args.h>
 
 
 extern bool debug;
-extern std::vector<int> catg_of_time_pts;
-extern std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+// extern std::vector<int> catg_of_time_pts;
+// extern std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+// extern bool output_timing;
+extern void add_timing_point(int catg);
 
 
 
@@ -57,7 +60,8 @@ class OpCatalogVarMeta : public opbox::Op {
       done };
 
 public:
-  OpCatalogVarMeta(net::peer_ptr_t peer, md_catalog_args args);
+  OpCatalogVarMeta(net::peer_ptr_t peer, 
+md_catalog_var_args args);
   OpCatalogVarMeta(op_create_as_target_t t);
   ~OpCatalogVarMeta();
 
@@ -100,8 +104,10 @@ private:
 
   lunasa::DataObject *ldo_msg;
 
-  std::string serializeMsgToServer(const md_catalog_args &args);
-  void deArchiveMsgFromClient(const std::string &serial_str, md_catalog_args &args);
+  std::string serializeMsgToServer(const 
+md_catalog_var_args &args);
+  void deArchiveMsgFromClient(const std::string &serial_str, 
+md_catalog_var_args &args);
 
   std::string serializeMsgToClient(const std::vector<md_catalog_var_entry> &entries,
                                                   uint32_t count,

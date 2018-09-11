@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,34 +26,6 @@
  * THE SOFTWARE.
  */
 
-/* 
- * Copyright 2014 Sandia Corporation. Under the terms of Contract
- * DE-AC04-94AL85000, there is a non-exclusive license for use of this work by
- * or on behalf of the U.S. Government. Export of this program may require a
- * license from the United States Government.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2014 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,24 +42,7 @@
 
 #include <my_metadata_args.h>
 #include <server_timing_constants.hh>
-#include <OpActivateTypeMetaCommon.hh>
-#include <OpActivateVarMetaCommon.hh>
-#include <OpCatalogVarMetaCommon.hh>     
-#include <OpCatalogTypeMetaCommon.hh>                   
-#include <OpCreateTypeMetaCommon.hh>          
-#include <OpCreateVarMetaCommon.hh>          
-#include <OpDeleteTypeMetaCommon.hh>           
-#include <OpDeleteVarMetaCommon.hh>               
-#include <OpFullShutdownMetaCommon.hh>     
-#include <OpGetAttributeListMetaCommon.hh>     
-#include <OpGetAttributeMetaCommon.hh>      
-#include <OpGetChunkListMetaCommon.hh>
-#include <OpGetChunkMetaCommon.hh>
-#include <OpInsertAttributeMetaCommon.hh>
-#include <OpInsertChunkMetaCommon.hh>
-#include <OpProcessingTypeMetaCommon.hh>
-#include <OpProcessingVarMetaCommon.hh>
-
+#include <libops.hh>
 
 #include <opbox/services/dirman/DirectoryManager.hh>
 #include <gutties/Gutties.hh>
@@ -126,12 +81,34 @@ dirman.type           centralized
 sqlite3 * db = NULL;
 
 bool debug_logging = false;
-bool error_logging = false;
+bool error_logging = true;
 
 bool md_shutdown = false;
 
-vector<int> catg_of_time_pts;
-vector<chrono::high_resolution_clock::time_point> time_pts;
+
+static bool output_timing = true;
+
+//link to testing_debug.cpp in cmake to do debug tests
+// static bool do_debug_testing = false;
+
+std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+std::vector<int> catg_of_time_pts;
+
+static void add_timing_point(chrono::high_resolution_clock::time_point time_pt, int catg) {
+    if (output_timing) {
+        time_pts.push_back(time_pt);
+        catg_of_time_pts.push_back(catg);
+    }
+}
+
+
+void add_timing_point(int catg) {
+    if (output_timing) {
+        time_pts.push_back(chrono::high_resolution_clock::now());
+        catg_of_time_pts.push_back(catg);
+    }
+}
+
 
 struct debug_log {
   template<typename T> debug_log& operator << (const T& x) {
@@ -179,7 +156,7 @@ struct error_log {
   }
 } error_log;
 
-static int callback (void * NotUsed, int argc, char ** argv, char ** ColName)
+int callback (void * NotUsed, int argc, char ** argv, char ** ColName)
 {
     int i;
     for (i = 0; i < argc; i++)
@@ -194,9 +171,11 @@ static int callback (void * NotUsed, int argc, char ** argv, char ** ColName)
 static int metadata_database_init ();
 static int setup_dirman(const string &dirman_file_path, const string &app_name, int rank);
 
+static int sql_output_db(sqlite3 *pInMemory, uint64_t job_id, int rank);
+static int sql_load_db(sqlite3 *pInMemory, uint64_t job_id, int rank);
 
 //===========================================================================
-static int metadata_database_init ()
+static int metadata_database_init (bool load_db, uint64_t job_id, int rank)
 {
     //setup the database
     int rc;
@@ -206,110 +185,382 @@ static int metadata_database_init ()
     
     if (rc != SQLITE_OK)
     {   
-        fprintf (stderr, "Can't open database: %s\n", sqlite3_errmsg (db));        sqlite3_close (db);
-        goto cleanup;
-    }
-    rc = sqlite3_exec (db, "create table var_catalog (id integer primary key autoincrement not null, name varchar (50), path varchar (50), version int, active int, txn_id int, num_dims int, d0_min int, d0_max int, d1_min int, d1_max int, d2_min int, d2_max int)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
-        sqlite3_free (ErrMsg);
+        fprintf (stderr, "Can't open database: %s\n", sqlite3_errmsg (db));        
         sqlite3_close (db);
         goto cleanup;
     }
 
-    rc = sqlite3_exec (db, "create table chunk_data (chunk_id integer primary key autoincrement not null, var_id int not null, connection varchar(128), length int, d0_min int not null, d0_max int not null, d1_min int not null, d1_max int not null, d2_min int not null, d2_max int not null)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+    if(load_db) {
+        rc = sql_load_db(db, job_id, rank);
+        while (rc == SQLITE_LOCKED || rc == SQLITE_BUSY) {
+            if (rc == SQLITE_LOCKED) {
+                error_log << "rank: " << rank << " db is locked. am waiting" << endl;
+            }
+            else {
+                 error_log << "rank: " << rank << "db is busy. am waiting" << endl;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (rc != SQLITE_OK)
+        {   
+            fprintf (stderr, "Can't load database for job_id:%llu: %s\n",job_id, sqlite3_errmsg (db));        
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    rc = sqlite3_exec (db, "create table type_catalog (type_id integer primary key autoincrement not null, name varchar (50), version int, active int, txn_id int)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
     }
+    else { //create new db
+        rc = sqlite3_exec (db, "create table run_catalog (id integer primary key autoincrement not null, job_id int, name varchar (50) collate nocase, date varchar (50), active int, txn_id int, npx int, npy int, npz int, rank_to_dims_funct varchar (1000), objector_funct varchar (6000))", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    rc = sqlite3_exec (db, "create table attribute_data (attribute_id integer primary key autoincrement not null, chunk_id int not null, type_id int not null, data varchar(256))", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+        rc = sqlite3_exec (db, "create table timestep_catalog (id integer not null, run_id int not null, path varchar (50) collate nocase, active int, txn_id int, primary key(id, run_id) )", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    //should be used by catalog
-    rc = sqlite3_exec (db, "create index gc_active on var_catalog (active)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+        //todo - should just dataset be active instead of var?
+        // rc = sqlite3_exec (db, "create table var_catalog (id integer primary key autoincrement not null, dataset_id int, name varchar (50), path varchar (50), version int, data_size int, num_dims int, d0_min int, d0_max int, d1_min int, d1_max int, d2_min int, d2_max int)", callback, 0, &ErrMsg);
+        rc = sqlite3_exec (db, "create table var_catalog (id integer not null, run_id int not null, timestep_id int not null, name varchar (50) collate nocase, path varchar (50) collate nocase, version int, data_size int, active int, txn_id int, num_dims int, d0_min int, d0_max int, d1_min int, d1_max int, d2_min int, d2_max int, primary key(id, run_id, timestep_id) )", callback, 0, &ErrMsg);
+        
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    //should be used by catalog
-    rc = sqlite3_exec (db, "create index tc_active on type_catalog (active)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+        // rc = sqlite3_exec (db, "create table type_catalog (id integer primary key autoincrement not null, dataset_id int, name varchar (50), version int, active int, txn_id int)", callback, 0, &ErrMsg);
+        rc = sqlite3_exec (db, "create table type_catalog (id integer primary key autoincrement not null, run_id int not null, name varchar (50) collate nocase, version int, active int, txn_id int )", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    //might need once I get delete working properly
-    // //should be used by delete
-    // rc = sqlite3_exec (db, "create index gc_id_name_path_ver on var_catalog (id, name, path, version)", callback, 0, &ErrMsg);
-    // if (rc != SQLITE_OK)    {
-    //     fprintf (stderr, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
-    //     sqlite3_free (ErrMsg);
-    //     sqlite3_close (db);
-    //     goto cleanup;
-    // }
+        rc = sqlite3_exec (db, "create table run_attribute_catalog (id integer primary key autoincrement not null, type_id int not null, active int, txn_id int, data_type int, data none )", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    //should be used by get list, get chunk
-    //note - as is, should never use the active part
-    rc = sqlite3_exec (db, "create index gc_txnid_id_name_path_ver_active on var_catalog (txn_id, id, name, path, version, active)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+        rc = sqlite3_exec (db, "create table timestep_attribute_catalog (id integer primary key autoincrement not null, timestep_id not null, type_id int not null, active int, txn_id int, data_type int, data none )", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
 
-    //should be used by get list
-    rc = sqlite3_exec (db, "create index tc_txnid_typeid_name_ver_active on type_catalog (txn_id, type_id, name, version, active)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+        rc = sqlite3_exec (db, "create table var_attribute_catalog (id integer primary key autoincrement not null, timestep_id not null, type_id int not null, var_id int not null, active int, txn_id int, num_dims int not null, d0_min int, d0_max int, d1_min int, d1_max int, d2_min int, d2_max int, data_type int, data none )", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+       
+        
 
-    //should be used by get chunk
-    rc = sqlite3_exec (db, "create index vd_varid_dims on chunk_data (var_id, d0_max, d0_min, d1_max, d1_min, d2_max, d2_min)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
-    
-    //should be used by get attribute
-    rc = sqlite3_exec (db, "create index ad_typeid_chunkid on attribute_data (type_id, chunk_id)", callback, 0, &ErrMsg);
-    if (rc != SQLITE_OK)    {
-        fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);        
-        sqlite3_free (ErrMsg);
-        sqlite3_close (db);
-        goto cleanup;
-    }
+    // //INDICES/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // //TXN-ACTIVE/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//fix - should any of these ids be unique?
+    //     rc = sqlite3_exec (db, "create index rc_txn_id_active on run_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index tmc_txn_id_active on timestep_attribute_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index vc_txn_id_active on var_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+
+    //     rc = sqlite3_exec (db, "create index tc_txn_id_active on type_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index rac_txn_id_active on run_attribute_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index tac_txn_id_active on timestep_attribute_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index vac_txn_id_active on var_attribute_catalog (txn_id, active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    // //ACTIVE/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //     rc = sqlite3_exec (db, "create index rc_active on run_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index tmc_active on timestep_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index vc_active on var_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index tc_active on type_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index rac_active on run_attribute_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index tac_active on timestep_attribute_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //     rc = sqlite3_exec (db, "create index vac_active on var_attribute_catalog (active)", callback, 0, &ErrMsg);
+    //     if (rc != SQLITE_OK)    {
+    //         fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+    //         sqlite3_free (ErrMsg);
+    //         sqlite3_close (db);
+    //         goto cleanup;
+    //     }
+
+    //DIMS/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // rc = sqlite3_exec (db, "create index vac_dims on var_attribute_catalog (d0_min, d0_max, d1_min, d1_max, d2_min, d2_max)", callback, 0, &ErrMsg);
+        // if (rc != SQLITE_OK)    {
+        //     fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+        //     sqlite3_free (ErrMsg);
+        //     sqlite3_close (db);
+        //     goto cleanup;
+        // }
+
+    //MISC/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+        rc = sqlite3_exec (db, "create index tc_all_cols on type_catalog(run_id, name, version)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        rc = sqlite3_exec (db, "create index rac_all_cols on run_attribute_catalog(type_id, data_type)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        rc = sqlite3_exec (db, "create index tac_all_cols on timestep_attribute_catalog(type_id, timestep_id, data_type)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        rc = sqlite3_exec (db, "create index vac_all_cols on var_attribute_catalog (timestep_id, type_id, var_id, d0_min)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        rc = sqlite3_exec (db, "create index vc_run_timestep on var_catalog (timestep_id, run_id)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        // rc = sqlite3_exec (db, "create index vc_timestep on var_catalog (timestep_id)", callback, 0, &ErrMsg);
+        // if (rc != SQLITE_OK)    {
+        //     fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+        //     sqlite3_free (ErrMsg);
+        //     sqlite3_close (db);
+        //     goto cleanup;
+        // }
+
+        rc = sqlite3_exec (db, "create index tmc_run on timestep_catalog (run_id)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        rc = sqlite3_exec (db, "create index vac_type_id_d0 on var_attribute_catalog(type_id, d0_min)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+
+        // rc = sqlite3_exec (db, "create index tac_type_id on timestep_attribute_catalog(type_id)", callback, 0, &ErrMsg);
+        // if (rc != SQLITE_OK)    {
+        //     fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+        //     sqlite3_free (ErrMsg);
+        //     sqlite3_close (db);
+        //     goto cleanup;
+        // }
+
+        rc = sqlite3_exec (db, "create index vac_varid_d0 on var_attribute_catalog(var_id, d0_min)", callback, 0, &ErrMsg);
+        if (rc != SQLITE_OK)    {
+            fprintf (stdout, "Line: %d SQL error: %s\n", __LINE__, ErrMsg);
+            sqlite3_free (ErrMsg);
+            sqlite3_close (db);
+            goto cleanup;
+        }
+    } //end of if(!load_db)
+
 
 cleanup:
     return rc;
+}
+
+//reminder: you get a performance boost if you register the ops before launching opbox/gutties
+static int register_ops () {
+    opbox::RegisterOp<OpInsertTimestepAttributeBatchMeta>();
+    opbox::RegisterOp<OpInsertRunAttributeBatchMeta>();
+    opbox::RegisterOp<OpCreateVarBatchMeta>();
+    opbox::RegisterOp<OpCreateTypeBatchMeta>();
+    opbox::RegisterOp<OpInsertVarAttributeByDimsBatchMeta>();
+    opbox::RegisterOp<OpDeleteAllVarsWithSubstrMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarSubstrDimsMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarSubstrDimsMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarSubstrMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarSubstrRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarSubstrDimsRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTypesWithVarAttributesWithVarSubstrInTimestepMeta>();
+    opbox::RegisterOp<OpCatalogAllTypesWithVarAttributesWithVarSubstrDimsInTimestepMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarSubstrMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarSubstrRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarSubstrMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarSubstrDimsRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarSubstrDimsMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarSubstrMeta>();
+    opbox::RegisterOp<OpProcessingMeta>();
+    opbox::RegisterOp<OpActivateMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarDimsRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepAttributesWithTypeRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarDimsRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllRunAttributesWithTypeRangeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepAttributesWithTypeMeta>();
+    opbox::RegisterOp<OpCatalogAllTypesWithVarAttributesWithVarDimsInTimestepMeta>();
+    opbox::RegisterOp<OpCatalogAllTypesWithVarAttributesWithVarInTimestepMeta>();
+    opbox::RegisterOp<OpCatalogAllTypesWithVarAttributesInTimestepMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarDimsMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepsWithVarAttributesWithTypeVarMeta>();
+    opbox::RegisterOp<OpCatalogAllRunAttributesWithTypeMeta>();
+    opbox::RegisterOp<OpCatalogAllTimestepAttributesMeta>();
+    opbox::RegisterOp<OpCatalogAllRunAttributesMeta>();
+    opbox::RegisterOp<OpDeleteTimestepByIdMeta>();
+    opbox::RegisterOp<OpCatalogTimestepMeta>();
+    opbox::RegisterOp<OpInsertTimestepAttributeMeta>();
+    opbox::RegisterOp<OpInsertRunAttributeMeta>();
+    opbox::RegisterOp<OpCreateTimestepMeta>();
+    opbox::RegisterOp<OpDeleteVarByNamePathVerMeta>();
+    opbox::RegisterOp<OpDeleteVarByIdMeta>();
+    opbox::RegisterOp<OpDeleteTypeByNameVerMeta>();
+    opbox::RegisterOp<OpDeleteTypeByIdMeta>();
+    opbox::RegisterOp<OpDeleteRunByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarDimsByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarDimsByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithVarByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarDimsByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarDimsByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeVarByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeDimsByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeDimsByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeByNameVerMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithTypeByIdMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesWithDimsMeta>();
+    opbox::RegisterOp<OpCatalogAllVarAttributesMeta>();
+    opbox::RegisterOp<OpCatalogRunMeta>();
+    opbox::RegisterOp<OpCatalogTypeMeta>(); 
+    opbox::RegisterOp<OpCatalogVarMeta>();
+    opbox::RegisterOp<OpCreateRunMeta>();
+    opbox::RegisterOp<OpCreateTypeMeta>();
+    opbox::RegisterOp<OpCreateVarMeta>();
+    opbox::RegisterOp<OpFullShutdownMeta>();  
+    opbox::RegisterOp<OpInsertVarAttributeByDimsMeta>();
+
+    return RC_OK;
 }
 
 
@@ -321,34 +572,38 @@ int main (int argc, char **argv)
     gethostname(name, sizeof(name));
     debug_log << name << endl;
     
-    if (argc != 3)
+    if (argc != 6)
     {
-        cout << 0 << " " << ERR_ARGC << endl;
-        error_log << "Usage: " << argv[0] << " <md_dirman file path>, estm_num_time_pts \n";
+        cout << 0 << " " << (int)ERR_ARGC << endl;
+        error_log << "Usage: " << argv[0] << " <md_dirman file path>, estm_num_time_pts, sql_load_db(0 or 1), sql_output_db(0 or 1), job_id \n";
         return RC_ERR;
     }
 
     int estm_num_time_pts = atoi(argv[2]); 
+    bool load_db = atoi(argv[3]);
+    bool output_db = atoi(argv[4]);
+    uint64_t job_id = atoi(argv[5]);
+
     catg_of_time_pts.reserve(estm_num_time_pts);
     time_pts.reserve(estm_num_time_pts);
 
     int num_wall_time_pts = 6;
+    int num_db_pts = 9;
     struct timeval start, mpi_init_done, register_done, db_init_done, dirman_init_done, finalize;
     vector<long double> clock_times;
     clock_times.reserve(num_wall_time_pts);
 
     gettimeofday(&start, NULL);
-    int zero_time_sec = 3600 * (start.tv_sec / 3600);
+    int zero_time_sec = 86400 * (start.tv_sec / 86400);
     clock_times.push_back( (start.tv_sec - zero_time_sec) + start.tv_usec / 1000000.0);
     chrono::high_resolution_clock::time_point start_time = chrono::high_resolution_clock::now();
-    time_pts.push_back(start_time);
-    catg_of_time_pts.push_back(PROGRAM_START);
+    add_timing_point(start_time, PROGRAM_START);
 
     int rc;
     int rank;
     int num_procs;
     string dir_path="/metadata/testing";
-    uint64_t db_sizes[8];
+    uint64_t db_sizes[num_db_pts];
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -356,34 +611,17 @@ int main (int argc, char **argv)
 
     gettimeofday(&mpi_init_done, NULL);
     clock_times.push_back( (mpi_init_done.tv_sec - zero_time_sec) + mpi_init_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(MPI_INIT_DONE);
+    add_timing_point(MPI_INIT_DONE);
 
-    opbox::RegisterOp<OpActivateTypeMeta>();
-    opbox::RegisterOp<OpActivateVarMeta>();   
-    opbox::RegisterOp<OpCatalogVarMeta>();
-    opbox::RegisterOp<OpCatalogTypeMeta>(); 
-    opbox::RegisterOp<OpCreateTypeMeta>(); 
-    opbox::RegisterOp<OpCreateVarMeta>();
-    opbox::RegisterOp<OpDeleteTypeMeta>();
-    opbox::RegisterOp<OpDeleteVarMeta>();
-    opbox::RegisterOp<OpFullShutdownMeta>();
-    opbox::RegisterOp<OpGetAttributeListMeta>();
-    opbox::RegisterOp<OpGetAttributeMeta>();   
-    opbox::RegisterOp<OpGetChunkListMeta>();
-    opbox::RegisterOp<OpGetChunkMeta>();
-    opbox::RegisterOp<OpInsertAttributeMeta>();
-    opbox::RegisterOp<OpInsertChunkMeta>();
-    opbox::RegisterOp<OpProcessingTypeMeta>();
-    opbox::RegisterOp<OpProcessingVarMeta>();
+
+    rc = register_ops();
 
     gettimeofday(&register_done, NULL);
     clock_times.push_back( (register_done.tv_sec - zero_time_sec) + register_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(REGISTER_OPS_DONE);
+    add_timing_point(REGISTER_OPS_DONE);
 
     //set up and return the database
-    rc = metadata_database_init ();
+    rc = metadata_database_init (load_db, job_id, rank);
     if (rc != RC_OK) {
         error_log << "Error. Could not init dbs. Error code " << rc << std::endl;
         time_pts.push_back(chrono::high_resolution_clock::now());
@@ -392,8 +630,7 @@ int main (int argc, char **argv)
     }
     gettimeofday(&db_init_done, NULL);
     clock_times.push_back( (db_init_done.tv_sec - zero_time_sec) + db_init_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(DB_SETUP_DONE);
+    add_timing_point(DB_SETUP_DONE);
 
     db_sizes[0] = sqlite3_memory_used();
     debug_log << "mem after setup and index creation: " << db_sizes[0] << endl;
@@ -407,10 +644,10 @@ int main (int argc, char **argv)
     }
     gettimeofday(&dirman_init_done, NULL);
     clock_times.push_back( (dirman_init_done.tv_sec - zero_time_sec) + dirman_init_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(DIRMAN_SETUP_DONE_INIT_DONE);
+    add_timing_point(DIRMAN_SETUP_DONE_INIT_DONE);
 
 
+    debug_log << "starting ops" << endl;
     while(!md_shutdown) {
          std::this_thread::sleep_for(std::chrono::milliseconds(10));
      }
@@ -419,50 +656,69 @@ cleanup:
     debug_log << "Shutting down" << endl;
     gettimeofday(&finalize, NULL);
     clock_times.push_back( (finalize.tv_sec - zero_time_sec) + finalize.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(SHUTDOWN_START);
+    add_timing_point(SHUTDOWN_START);
 
     db_sizes[1] = sqlite3_memory_used();
 
     sqlite3_stmt * stmt = NULL;
     const char * tail = NULL;
 
-    rc = sqlite3_prepare_v2 (db, "select count (*) from var_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+
+    rc = sqlite3_prepare_v2 (db, "select count (*) from run_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
     rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
     db_sizes[2] = sqlite3_column_int (stmt, 0);
     rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
 
-    rc = sqlite3_prepare_v2 (db, "select count (*) from chunk_data", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_prepare_v2 (db, "select count (*) from timestep_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
     rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
     db_sizes[3] = sqlite3_column_int (stmt, 0);
     rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
 
-    rc = sqlite3_prepare_v2 (db, "select count (*) from type_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_prepare_v2 (db, "select count (*) from var_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
     rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
     db_sizes[4] = sqlite3_column_int (stmt, 0);
     rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
 
-    rc = sqlite3_prepare_v2 (db, "select count (*) from attribute_data", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_prepare_v2 (db, "select count (*) from type_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
     rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
     db_sizes[5] = sqlite3_column_int (stmt, 0);
     rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
 
-    debug_log << "sizeof db: " << db_sizes[1] << endl;
-    debug_log << "num vars: " << db_sizes[2] << " num types: " << db_sizes[4] << " num chunks: " << db_sizes[3] << " num_attrs: " << db_sizes[5] << endl;
-    uint64_t estm_size_needed = 42*db_sizes[2] + 34*db_sizes[3] + 17*db_sizes[4] + (int) (16.615*db_sizes[5]);
-    db_sizes[6] = estm_size_needed;
-    debug_log << "estm_size_needed: " << estm_size_needed << " dif: " << db_sizes[1] - estm_size_needed << endl;
-    uint64_t estm_size_needed_with_serialization = 42*db_sizes[2] + 34*db_sizes[3] + 17*db_sizes[4] + (int) (67.076*db_sizes[5]);
-    debug_log << "estm_size_needed_with_serialization: " << estm_size_needed_with_serialization << " dif: " << db_sizes[1] - estm_size_needed_with_serialization << endl;
-    db_sizes[7] = estm_size_needed_with_serialization;
+    rc = sqlite3_prepare_v2 (db, "select count (*) from run_attribute_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
+    db_sizes[6] = sqlite3_column_int (stmt, 0);
+    rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(DB_ANALYSIS_DONE);
+    rc = sqlite3_prepare_v2 (db, "select count (*) from timestep_attribute_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
+    db_sizes[7] = sqlite3_column_int (stmt, 0);
+    rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);
+
+    rc = sqlite3_prepare_v2 (db, "select count (*) from var_attribute_catalog", -1, &stmt, &tail); assert (rc == SQLITE_OK);
+    rc = sqlite3_step (stmt); assert (rc == SQLITE_OK || rc == SQLITE_ROW);
+    db_sizes[8] = sqlite3_column_int (stmt, 0);
+    rc = sqlite3_finalize (stmt); assert (rc == SQLITE_OK);   
+
+    debug_log << "sizeof db: " << db_sizes[1] << endl;
+    debug_log << "num runs: " << db_sizes[2] << " num timesteps: " << db_sizes[3] << " num vars: " << db_sizes[4] << 
+        " num types: " << db_sizes[5] << " num run attributes: " << db_sizes[6] << " num timestep attributes: " << db_sizes[7] <<  
+        " num var attributes: " << db_sizes[8] << endl;
+
+    add_timing_point(DB_ANALYSIS_DONE);
+
+    if(output_db) {
+        rc = sql_output_db(db, job_id, rank);
+        if (rc != SQLITE_OK)
+        {   
+            fprintf (stderr, "Can't output database for job_id:%llu: %s\n",job_id, sqlite3_errmsg (db));        
+            sqlite3_close (db);
+            goto cleanup;
+        }
+    }
 
     sqlite3_close (db);
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(DB_CLOSED_SHUTDOWN_DONE);
+    add_timing_point(DB_CLOSED_SHUTDOWN_DONE);
 
     int num_time_pts = time_pts.size();
     int *catg_of_time_pts_ary = &catg_of_time_pts[0];
@@ -478,14 +734,14 @@ cleanup:
 
     if(rank == 0) {
         each_proc_num_time_pts = (int *) malloc(num_procs * sizeof(int));
-        all_db_sizes = (uint64_t *) malloc(num_procs * 8 * sizeof(uint64_t));
+        all_db_sizes = (uint64_t *) malloc(num_procs * num_db_pts * sizeof(uint64_t));
         all_clock_times = (long double *) malloc(num_procs * num_wall_time_pts * sizeof(long double));
     }
 
     debug_log << "time_pts.size(): " << time_pts.size() << endl;
     MPI_Gather(&num_time_pts, 1, MPI_INT, each_proc_num_time_pts, 1, MPI_INT, 0, MPI_COMM_WORLD); 
 
-    MPI_Gather(db_sizes, 8, MPI_UNSIGNED_LONG, all_db_sizes, 8, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD); 
+    MPI_Gather(db_sizes, num_db_pts, MPI_UNSIGNED_LONG, all_db_sizes, num_db_pts, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD); 
 
     MPI_Gather(&clock_times[0], num_wall_time_pts, MPI_LONG_DOUBLE, all_clock_times, num_wall_time_pts, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD); 
 
@@ -510,8 +766,11 @@ cleanup:
     MPI_Gatherv(catg_of_time_pts_ary, num_time_pts, MPI_INT, all_catg_time_pts_buf, each_proc_num_time_pts, displacement_for_each_proc, MPI_INT, 0, MPI_COMM_WORLD); 
     
     if (rank == 0) {
-        cout << DB_SIZES << " ";
-        for(int i=0; i<(8*num_procs); i++) {
+        //prevent it from buffering the printf statements
+        setbuf(stdout, NULL);
+
+        cout << (int)DB_SIZES << " ";
+        for(int i=0; i<(num_db_pts*num_procs); i++) {
             std::cout << all_db_sizes[i] << " ";
             if (i%20 == 0 && i!=0) {
                 std::cout << std::endl;
@@ -519,7 +778,7 @@ cleanup:
         }
         for(int i = 0; i<(num_wall_time_pts * num_procs); i++) {
             if(i%num_wall_time_pts == 0) {
-                std::cout << CLOCK_TIMES_NEW_PROC << " ";
+                std::cout << (int)CLOCK_TIMES_NEW_PROC << " ";
             }
             if(all_clock_times[i] != 0) {
                 printf("%.6Lf ", all_clock_times[i]);
@@ -528,7 +787,9 @@ cleanup:
                 std::cout << std::endl;
             } 
         }
-        std::cout << CLOCK_TIMES_DONE << " ";
+        std::cout << (int)CLOCK_TIMES_DONE << " ";
+
+        //prevent it buffering the 
         for(int i=0; i<sum; i++) {
             printf("%4d %10.0f ", all_catg_time_pts_buf[i], all_time_pts_buf[i]);
             // std::cout << all_time_pts_buf[i] << " " << all_catg_time_pts_buf[i] << " ";
@@ -536,7 +797,7 @@ cleanup:
                 std::cout << std::endl;
             }
         }
-
+        std::cout << std::endl;
 
         free(all_time_pts_buf);
         free(all_catg_time_pts_buf);
@@ -620,4 +881,97 @@ static int setup_dirman(const string &dirman_file_path, const string &dir_path, 
     debug_log << "App Server Info: '" << dir.info << "ReferenceNode: " << dir.GetReferenceNode().GetHex() << " NumberChildren: " << to_string(dir.children.size()) << endl;
 
     return rc;
+}
+
+static int sql_output_db(sqlite3 *pInMemory, uint64_t job_id, int rank)
+{
+    int rc;
+    sqlite3 *pFile;           /* Database connection  */
+    sqlite3_backup *pBackup;  /* Backup object used to copy data */
+
+    add_timing_point(DB_OUTPUT_START);
+
+    string filename = to_string(job_id) + "_" + to_string(rank);
+    /* Open the database file. Exit early if this fails
+      ** for any reason. */
+    rc = sqlite3_open(filename.c_str(), &pFile);
+    if( rc==SQLITE_OK ){  
+        /* Set up the backup procedure to copy from the the main database of connection pInMemory
+        to the "main" database of the connection pFile.
+        ** If something goes wrong, pBackup will be set to NULL and an error
+        ** code and message left in connection pFile.
+        */
+        // pBackup = sqlite3_backup_init(pTo, "main", pFrom, "main");
+        pBackup = sqlite3_backup_init(pFile, "main", pInMemory, "main");
+
+
+        /* If the backup object is successfully created, call backup_step()
+        ** to copy data from pInMemory to pFile . Then call backup_finish()
+        ** to release resources associated with the pBackup object.  If an
+        ** error occurred, then an error code and message will be left in
+        ** connection pTo. If no error occurred, then the error code belonging
+        ** to pFile is set to SQLITE_OK.
+        */
+        if( pBackup ){
+          (void)sqlite3_backup_step(pBackup, -1);
+          (void)sqlite3_backup_finish(pBackup);
+        }
+        // rc = sqlite3_errcode(pTo);
+        rc = sqlite3_errcode(pFile);
+    }
+
+    /* Close the database connection opened on database file zFilename
+    ** and return the result of this function. */
+    (void)sqlite3_close(pFile);
+
+    add_timing_point(DB_OUTPUT_DONE);
+
+    return rc;
+
+}
+
+static int sql_load_db(sqlite3 *pInMemory, uint64_t job_id, int rank)
+{
+    int rc;
+    sqlite3 *pFile;           /* Database connection  */
+    sqlite3_backup *pBackup;  /* Backup object used to copy data */
+
+    add_timing_point(DB_LOAD_START);
+
+    string filename = to_string(job_id) + "_" + to_string(rank);
+    /* Open the database file. Exit early if this fails
+      ** for any reason. */
+    rc = sqlite3_open(filename.c_str(), &pFile);
+    if( rc==SQLITE_OK ){  
+        /* Set up the backup procedure to copy from the the main database of connection pInMemory
+        to the "main" database of the connection pFile.
+        ** If something goes wrong, pBackup will be set to NULL and an error
+        ** code and message left in connection pFile.
+        */
+        // pBackup = sqlite3_backup_init(pTo, "main", pFrom, "main");
+        pBackup = sqlite3_backup_init(pInMemory, "main", pFile, "main");
+
+        /* If the backup object is successfully created, call backup_step()
+        ** to copy data from pInMemory to pFile . Then call backup_finish()
+        ** to release resources associated with the pBackup object.  If an
+        ** error occurred, then an error code and message will be left in
+        ** connection pTo. If no error occurred, then the error code belonging
+        ** to pFile is set to SQLITE_OK.
+        */
+        if( pBackup ){
+          (void)sqlite3_backup_step(pBackup, -1);
+          (void)sqlite3_backup_finish(pBackup);
+        }
+        // rc = sqlite3_errcode(pTo);
+        rc = sqlite3_errcode(pInMemory);
+    }
+
+    /* Close the database connection opened on database file zFilename
+    ** and return the result of this function. */
+    (void)sqlite3_close(pFile);
+
+    add_timing_point(DB_LOAD_DONE);
+
+    return rc;
+
 }

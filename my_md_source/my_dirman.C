@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,34 +26,8 @@
  * THE SOFTWARE.
  */
 
-/* 
- * Copyright 2014 Sandia Corporation. Under the terms of Contract
- * DE-AC04-94AL85000, there is a non-exclusive license for use of this work by
- * or on behalf of the U.S. Government. Export of this program may require a
- * license from the United States Government.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2014 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+
+
 #include <iostream>
 #include <chrono>
 #include <fstream>
@@ -110,7 +84,7 @@ int GENERATE_CONTACT_INFO_DONE = 4;
 int FINALIZE = 5;
 
 int CLOCK_TIMES_START = 98;
-int CLOCK_TIMES_END = 99;
+int CLOCK_TIMES_DONE = 99;
 
 int ERR_GENERATE_CONTACT_INFO = 10000;
 
@@ -118,9 +92,29 @@ int RC_OK = 0;
 int RC_ERR = -1;
 
 bool debug_logging = false;
-bool error_logging = false;
+bool error_logging = true;
 
 bool md_shutdown = false;
+
+static bool output_timing = true;
+
+std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+std::vector<int> catg_of_time_pts;
+
+static void add_timing_point(chrono::high_resolution_clock::time_point time_pt, int catg) {
+    if (output_timing) {
+        time_pts.push_back(time_pt);
+        catg_of_time_pts.push_back(catg);
+    }
+}
+
+
+void add_timing_point(int catg) {
+    if (output_timing) {
+        time_pts.push_back(chrono::high_resolution_clock::now());
+        catg_of_time_pts.push_back(catg);
+    }
+}
 
 static int generate_contact_info (const string &dirmanHexID);
 static void setup_dirman(const string &dir_path, const string &dir_info);
@@ -137,26 +131,22 @@ static void error_log(const std::string &s) {
 int main(int argc, char *argv[]) {
     char name[100];
     gethostname(name, sizeof(name));
-    error_log(name);
+    debug_log(name);
     
     int num_time_pts = 6;
-    vector<int> catg_of_time_pts;
     catg_of_time_pts.reserve(num_time_pts);
  
     struct timeval start, mpi_init_done, dirman_init_done, register_done, generate_done, finalize;
     vector<long double> clock_times;
     clock_times.reserve(num_time_pts);
 
-    vector<chrono::high_resolution_clock::time_point> time_pts;
     time_pts.reserve(num_time_pts);
 
     gettimeofday(&start, NULL);
-    int zero_time_sec = 3600 * (start.tv_sec / 3600);
+    int zero_time_sec = 86400 * (start.tv_sec / 86400);
     clock_times.push_back( (start.tv_sec - zero_time_sec) + start.tv_usec / 1000000.0);
     chrono::high_resolution_clock::time_point start_time = chrono::high_resolution_clock::now();
-    time_pts.push_back(start_time);
-    catg_of_time_pts.push_back(START); 
-
+    add_timing_point(start_time, START);
 
     int rc;
     debug_log("got here 1");
@@ -164,8 +154,7 @@ int main(int argc, char *argv[]) {
     
     gettimeofday(&mpi_init_done, NULL);
     clock_times.push_back( (mpi_init_done.tv_sec - zero_time_sec) + mpi_init_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(MPI_INIT_DONE);
+    add_timing_point(MPI_INIT_DONE);
 
     debug_log("got here 2");
 
@@ -177,32 +166,28 @@ int main(int argc, char *argv[]) {
 
     gettimeofday(&dirman_init_done, NULL);
     clock_times.push_back((dirman_init_done.tv_sec - zero_time_sec) + dirman_init_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(DIRMAN_SETUP_DONE);
+    add_timing_point(DIRMAN_SETUP_DONE);
 
 
     opbox::RegisterOp<OpFullShutdownMeta>();
 
     gettimeofday(&register_done, NULL);
     clock_times.push_back((register_done.tv_sec - zero_time_sec) + register_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(REGISTER_OPS_DONE); 
+    add_timing_point(REGISTER_OPS_DONE); 
     debug_log("got here 3");
 
 
     //write the URL to the contact info file so the clients and servers can find it
     rc = generate_contact_info (myHexID);
     if(rc != RC_OK) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(ERR_GENERATE_CONTACT_INFO);
+    	add_timing_point(ERR_GENERATE_CONTACT_INFO);
         goto cleanup;
     }
     debug_log("got here 4");
 
     gettimeofday(&generate_done, NULL);
     clock_times.push_back((generate_done.tv_sec - zero_time_sec) + generate_done.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(GENERATE_CONTACT_INFO_DONE);
+    add_timing_point(GENERATE_CONTACT_INFO_DONE);
 
     debug_log("got here 5");
 
@@ -214,14 +199,18 @@ cleanup:
 
     gettimeofday(&finalize, NULL);
     clock_times.push_back((finalize.tv_sec - zero_time_sec) + finalize.tv_usec / 1000000.0);
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(FINALIZE);
+    add_timing_point(FINALIZE);
   
+    //prevent it from buffering the printf statements
+    setbuf(stdout, NULL);
+
     cout << CLOCK_TIMES_START << " ";
      for(int i=0; i<clock_times.size(); i++) {
         printf("%.6Lf ", clock_times[i]);
         // std::cout << total_time << " " << catg_of_time_pts.at(i) << " ";
     }
+    // cout << CLOCK_TIMES_DONE << " ";
+    // cout << "time_pts.size(): " << time_pts.size() << endl;
     for(int i=0; i<time_pts.size(); i++) {
         std::chrono::duration<double, std::nano> fp_ns = time_pts.at(i) - start_time;
         double total_time = fp_ns.count();
@@ -229,6 +218,8 @@ cleanup:
 
         // std::cout << total_time << " " << catg_of_time_pts.at(i) << " ";
     }
+    std::cout << std::endl;
+
     debug_log("Finalizing");
     MPI_Finalize();
     gutties::bootstrap::Finish();

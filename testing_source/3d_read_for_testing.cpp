@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,6 +26,7 @@
  * THE SOFTWARE.
  */
 
+
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,158 +35,108 @@
 #include <assert.h>
 
 #include <3d_read_for_testing.hh>
-#include <client_timing_constants.hh>
-#include <OpCatalogVarMetaCommon.hh> 
-#include <OpGetAttributeMetaCommon.hh>
-#include <OpGetChunkMetaCommon.hh>
+// #include <client_timing_constants.hh>
+#include <client_timing_constants_read.hh>
+#include <testing_harness_debug_helper_functions.hh> //note - this is just to use while debugging for print functs
+#include <my_metadata_client_lua_functs.h> //note- this is just to use while debugging for print functs/using retrieving obj names
 
+#include <hdf5_helper_functions_read.hh>
 
 using namespace std;
 
-extern std::vector<int> catg_of_time_pts;
-extern std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+// extern std::vector<int> catg_of_time_pts;
+// extern std::vector<std::chrono::high_resolution_clock::time_point> time_pts;
+extern void add_timing_point(int catg);
+extern void add_objector_point(int catg, int num_params_to_fetch);
+// extern void add_objector_output_point(int time_catg, int num_params_to_fetch, uint16_t read_type);
 
 static bool extreme_debug_logging = false;
 static bool debug_logging = false;
-static bool error_logging = false;
-static errorLog error_log = errorLog(error_logging);
+static bool error_logging = true;
+static bool testing_logging = false;
+static bool zero_rank_logging = false;
+
+static debugLog error_log = debugLog(error_logging);
 static debugLog debug_log = debugLog(debug_logging);
-static extremeDebugLog extreme_debug_log = extremeDebugLog(extreme_debug_logging);
+static debugLog extreme_debug_log = debugLog(extreme_debug_logging);
+static debugLog testing_log = debugLog(testing_logging);
 
-static bool do_debug_testing = false;
+static debugLog zero_rank_log = debugLog(true);
+
+static bool generate_obj_names = false;
+
+extern vector<objector_params> all_objector_params;
+extern bool output_objector_params;
+extern bool output_obj_names;
+extern bool hdf5_read_data;
 
 
-// 1. return chunks for all vars
-int read_pattern_1 (int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, 
-                    int num_z_procs, std::vector<md_catalog_var_entry> entries, int num_vars,
-                    int total_x_length, int total_y_length, int total_z_length, uint64_t txn_id)
+template <class T>
+extern void gather_attr_entries(vector<T> attr_entries, uint32_t count, int rank, uint32_t num_servers, uint32_t num_client_procs,
+        vector<T> &all_attr_entries);
+
+extern objector_params get_objector_params ( const md_catalog_run_entry &run, const md_catalog_var_entry &var, 
+                            const vector<md_dim_bounds> &bounding_box, OBJECTOR_PARAMS_READ_TYPES read_type );
+
+extern bool dims_overlap(const vector<md_dim_bounds> &attr_dims, const vector<md_dim_bounds> &proc_dims);
+
+extern int add_object_names_offests_and_counts(const md_catalog_run_entry &run, const md_catalog_var_entry &var,
+                                    const vector<md_dim_bounds> &proc_dims, uint16_t read_type);
+
+extern vector<md_dim_bounds> get_overlapping_dims_for_bounding_box ( const vector<md_dim_bounds> &bounding_box, 
+                            const vector<md_dim_bounds> &proc_dims
+                            );
+
+int read_data(int64_t timestep_file_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var, 
+			const vector<md_dim_bounds> &proc_dims, OBJECTOR_PARAMS_READ_TYPES catg, uint16_t data_read_start_code,
+			uint16_t data_read_done_code
+			);
+
+int read_pattern_attrs(md_server server, int rank, const vector<md_dim_bounds> &proc_dims, 
+	const md_catalog_run_entry &run, 
+	const md_catalog_var_entry &var, uint32_t num_servers, uint32_t num_client_procs, 
+	uint64_t txn_id, uint64_t type_id,
+	uint16_t catalog_attr_start_code, uint16_t catalog_attr_done_code
+	);
+
+// extern void gather_attr_entries(vector<md_catalog_var_attribute_entry> attr_entries, uint32_t count, int rank, uint32_t num_servers, uint32_t num_client_procs,
+//         vector<md_catalog_var_attribute_entry> &all_attr_entries);
+
+// 1. return data for all vars
+int read_pattern_1 (const std::vector<md_dim_bounds> &proc_dims, 
+                    const md_catalog_run_entry &run,
+                    const std::vector<md_catalog_var_entry> &entries, int num_vars, uint64_t txn_id)
 {
     
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_1_START);
+    add_timing_point(READ_PATTERN_1_START);
 
-    int rc;
+    int rc = RC_OK;
 
-    md_catalog_var_entry var;
+    for (int j=0; j<3; j++) {
+        extreme_debug_log <<  "proc_dims [" << to_string(j) << "] min is: " << to_string(proc_dims [j].min) << endl;
+        extreme_debug_log <<  "proc_dims [" << to_string(j) << "] max is: " << to_string(proc_dims [j].max) << endl;
+    }    
 
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
+    // add_timing_point(READ_PATTERN_1_VAR_INIT_DONE_START_READING);
+    // add_timing_point(READ_PATTERN_1_VAR_INIT_DONE_START_READING);
 
-    int x_length_per_proc = total_x_length / num_x_procs; //fix - deal with edge case?
-    int y_length_per_proc = total_y_length / num_y_procs;
-    int z_length_per_proc = total_z_length / num_z_procs;
-
-    int x_pos = rank % num_x_procs;
-    int y_pos = (rank / num_x_procs) % num_y_procs;
-    int z_pos = ((rank / (num_x_procs * num_y_procs)) % num_z_procs);
-
-    int x_offset = x_pos * x_length_per_proc;
-    int y_offset = y_pos * y_length_per_proc;
-    int z_offset = z_pos * z_length_per_proc;
-
-    extreme_debug_log << "about to assign var info \n";
-    extreme_debug_log << "txn_id: " << to_string(txn_id) << endl;
-    extreme_debug_log << "x_pos: " << x_pos << endl;
-    extreme_debug_log << "y_pos: " << y_pos << endl;
-    extreme_debug_log << "z_pos: " << z_pos << endl;
-    extreme_debug_log << "x_offset : " << x_offset  << endl;
-    extreme_debug_log << "y_offset : " << y_offset  << endl;
-    extreme_debug_log << "z_offset : " << z_offset  << endl;
-    extreme_debug_log << "x_length_per_proc : " << x_length_per_proc  << endl;
-    extreme_debug_log << "y_length_per_proc : " << y_length_per_proc  << endl;
-    extreme_debug_log << "z_length_per_proc : " << z_length_per_proc  << endl;
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_1_VAR_INIT_DONE_START_READING);
+    int64_t timestep_file_id;
+    if(hdf5_read_data) {
+    	hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, entries.at(0).timestep_id, timestep_file_id);
+    }
 
     //each proc is responsible for a certain area of the sim space
-    //it must get all the chunk info for each var by asking each server
     for(int i=0; i<num_vars; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_1_START_READING_VAR);
-        debug_log << "beginning to fetch chunks" << endl;
-        if( i == 0 ) {
-            var = entries.at(0);
-            var.dims [0].min = x_offset;
-            var.dims [0].max = x_offset + x_length_per_proc - 1;
-            var.dims [1].min = y_offset;
-            var.dims [1].max = y_offset + y_length_per_proc - 1;
-            var.dims [2].min = z_offset;
-            var.dims [2].max = z_offset + z_length_per_proc - 1;
+       	md_catalog_var_entry var = entries.at(i);   
 
-            extreme_debug_log << "var txn_id is " << var.txn_id << endl;
-            extreme_debug_log << "var num_dims is " << var.num_dims << endl;     
-            debug_log << "read pattern 1" << endl;
-            for (int j=0; j<3; j++) {
-                debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-                debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-            }  
-        }
-        else { //have already assigned this for the 0th var
-            md_catalog_var_entry temp_var = entries.at(i);
-            var.name = temp_var.name;
-            var.path = temp_var.path;
-            var.version = temp_var.version;    
-        }
-
-        extreme_debug_log << "var name is " << var.name << endl;
-        extreme_debug_log << "var path is " << var.path << endl;
-        extreme_debug_log << "var version is " << var.version << endl;
-        extreme_debug_log << "num_servers is " << num_servers << endl;
-
-        for (int j=0; j < num_servers; j++) { 
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_1_START_READING_FROM_NEW_SERVER);
-            extreme_debug_log << "j: " << j << endl;
-            rc = metadata_get_chunk (servers.at(j), var, num_chunks, chunks);
-            extreme_debug_log << "rc: " << rc << endl;
-            if (rc != RC_OK) {
-                error_log << "Error retrieving chunk \n";
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(ERR_GET_CHUNK);
-                goto cleanup;
-            }
-            else{
-                if(do_debug_testing) {
-                    debug_log<< "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                          << var.name << " path: " << var.path << " version: " << var.version 
-                          << " (count: " << num_chunks << ") \n";
-                    print_chunk_list (num_chunks, chunks);                     
-                }
-            }    
-
-            if( is_type ) {
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(READ_PATTERN_1_START_GET_ATTRS);
-
-                for (int i=0; i < num_chunks; i++) {
-                    rc = metadata_get_attribute(servers.at(j), txn_id, chunks.at(i).chunk_id, num_attributes, attributes);
-                    if (rc != RC_OK) {
-                        error_log << "Error retrieving attribute \n";
-                        time_pts.push_back(chrono::high_resolution_clock::now());
-                        catg_of_time_pts.push_back(ERR_GET_ATTR);
-                    }
-                    else {
-                        if(do_debug_testing) {
-                            debug_log << "num attributes: " << num_attributes << endl;  
-                            print_attribute_list(num_attributes, attributes);
-                        }
-                    }
-                }
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(READ_PATTERN_1_DONE_GET_ATTRS);
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_1_DONE_READING_FROM_SERVER);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_1_DONE_READING_VAR); 
+	   	rc = read_data(timestep_file_id, run, var, proc_dims, PATTERN_1, READ_PATTERN_1_START_READING_VAR_DATA, READ_PATTERN_1_DONE_READING_VAR_DATA);
+        
     }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_1_DONE_READING); 
+    if(hdf5_read_data) {
+    	hdf5_close_timestep_file(timestep_file_id);
+    }
+
+    add_timing_point(READ_PATTERN_1_DONE); 
 
 cleanup:
     return rc;
@@ -193,120 +144,42 @@ cleanup:
 
 
 // 2. all of 1 var
-int read_pattern_2 (MPI_Comm comm, int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, 
-                    int num_z_procs, std::vector<md_catalog_var_entry> entries, int num_vars,
-                    int nx, int ny, int nz, uint64_t txn_id, uint64_t var_id)
+int read_pattern_2 (int rank, const std::vector<md_dim_bounds> &proc_dims, 
+                    int num_servers, int num_client_procs, const md_server &server, bool is_type,
+                    uint64_t txn_id, const md_catalog_run_entry &run,
+                    const md_catalog_var_entry &var, 
+                    const vector<uint64_t> &type_ids
+                    )
 {
-    
-    
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_2_START);
-
-    int rc;
+    int rc = RC_OK;
     int index_of_var;
-    md_catalog_var_entry var;
 
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
-
-    int x_length_per_proc = nx / num_x_procs; //fix - deal with edge case?
-    int y_length_per_proc = ny / num_y_procs;
-    int z_length_per_proc = nz / num_z_procs;
-
-    int x_pos = rank % num_x_procs;
-    int y_pos = (rank / num_x_procs) % num_y_procs;
-    int z_pos = ((rank / (num_x_procs * num_y_procs)) % num_z_procs);
-    int x_offset = x_pos * x_length_per_proc;
-    int y_offset = y_pos * y_length_per_proc;
-    int z_offset = z_pos * z_length_per_proc;
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_2_VAR_INIT_DONE);
-
-    if (rank == 0) {
-        int i=0;
-        while (i < num_vars && entries.at(i).var_id != var_id) {
-            i++;
-        }
-        if (i == num_vars) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_VAR_ID_NOT_FOUND);
-            error_log << "Error pattern 2. The given var id " << var_id << " was not found in the catalog for txnid: " << txn_id << ". Exiting \n";
-            goto cleanup;
-        }
-        index_of_var = i;
+    int64_t timestep_file_id;
+    if (hdf5_read_data) {
+		hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, var.timestep_id, timestep_file_id);
     }
+    
+    add_timing_point(READ_PATTERN_2_START);
 
-    MPI_Bcast(&index_of_var, 1, MPI_INT, 0, comm);
+    if (!is_type) {
+	   	rc = read_data(timestep_file_id, run, var, proc_dims, PATTERN_2, READ_PATTERN_2_START_READING_VAR_DATA, READ_PATTERN_2_DONE_READING_VAR_DATA);
+	}
+    else { //is_type, the data for the features of interest act as a substitute for reading the whole var
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_2_BCAST_DONE_START_READING_VAR);
+	    for (uint64_t type_id : type_ids) {
 
-    for (int j=0; j < num_servers; j++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_2_START_READING_FROM_NEW_SERVER);
+			read_pattern_attrs(server, rank, proc_dims, run, var, num_servers, num_client_procs, txn_id, type_id,
+				READ_PATTERN_2_START_CATALOGING_VAR_ATTRS, READ_PATTERN_2_DONE_CATALOGING_VAR_ATTRS);	    	
 
-        if(j == 0) {
-            var = entries.at(index_of_var);
-            var.txn_id = txn_id;
-            var.dims [0].min = x_offset;
-            var.dims [0].max = x_offset + x_length_per_proc - 1;
-            var.dims [1].min = y_offset;
-            var.dims [1].max = y_offset + y_length_per_proc - 1;
-            var.dims [2].min = z_offset;
-            var.dims [2].max = z_offset + z_length_per_proc - 1;
+		} //end for (uint64_t type_id : type_ids)
+	} //end else (is_type)
 
-            extreme_debug_log << "read pattern 2" << endl;
-            for (int j=0; j<3; j++) {
-                extreme_debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-                extreme_debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-            }  
-        }
-        rc = metadata_get_chunk (servers.at(j), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);
-            goto cleanup;
+	if (hdf5_read_data) {
+		hdf5_close_timestep_file(timestep_file_id);
 
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks); 
-            }
-        }
+	}
 
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_2_START_GET_ATTRS);
-
-            for (int i=0; i < num_chunks; i++) {
-                rc = metadata_get_attribute(servers.at(j), txn_id, chunks.at(i).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-
-                    time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);                
-                }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes); 
-                    }        
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_2_DONE_GET_ATTRS);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_2_DONE_READING_FROM_SERVER);
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_2_DONE_READING);    
+    add_timing_point(READ_PATTERN_2_DONE);
 
 cleanup:
 
@@ -314,167 +187,57 @@ cleanup:
 }
 
 // 3. all of a few vars (3 for 3-d, for example)
-int read_pattern_3 (MPI_Comm comm, int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, int num_z_procs, 
-                    std::vector<md_catalog_var_entry> entries, int num_vars, int total_x_length, 
-                    int total_y_length, int total_z_length, uint64_t txn_id, 
-                    vector<uint64_t> var_ids, int num_vars_to_fetch) 
+//todo - note: when you're using the one client per server queries paradigm, none of these patterns need the entire list of servers
+int read_pattern_3 (int rank, const std::vector<md_dim_bounds> &proc_dims, int num_servers, 
+                    int num_client_procs,
+                    const md_server &server,  bool is_type,
+                    uint64_t txn_id, const md_catalog_run_entry &run,
+                    const std::vector<md_catalog_var_entry> &vars, 
+                    const vector<uint64_t> &type_ids
+                    ) 
 {
-    
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_3_START);
+    int rc = RC_OK;
 
-    int rc;
+    add_timing_point(READ_PATTERN_3_START);
 
-    md_catalog_var_entry var;
-    int indices[num_vars_to_fetch];
+    // for (int j=0; j<3; j++) {
+    //     debug_log <<  "proc_dims [" << to_string(j) << "] min is: " << to_string(proc_dims [j].min) << endl;
+    //     debug_log <<  "proc_dims [" << to_string(j) << "] max is: " << to_string(proc_dims [j].max) << endl;
+    // }    
 
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
-
-    int x_length_per_proc = total_x_length / num_x_procs; //fix - deal with edge case?
-    int y_length_per_proc = total_y_length / num_y_procs;
-    int z_length_per_proc = total_z_length / num_z_procs;
-
-    int x_pos = rank % num_x_procs;
-    int y_pos = (rank / num_x_procs) % num_y_procs;
-    int z_pos = ((rank / (num_x_procs * num_y_procs)) % num_z_procs);
-    int x_offset = x_pos * x_length_per_proc;
-    int y_offset = y_pos * y_length_per_proc;
-    int z_offset = z_pos * z_length_per_proc;
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_3_VAR_INIT_DONE);
-
-    if (rank == 0) {
-        for(int i=0; i<num_vars_to_fetch; i++) {
-            uint64_t var_id = var_ids.at(i);
-            debug_log << "var_id: " << to_string(var_id) << endl;
-
-            int j = 0;
-            while (j < num_vars && entries.at(j).var_id != var_id) {
-                j++;
-            }
-            if (j == num_vars) {
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(ERR_VAR_ID_NOT_FOUND);
-                error_log << "Error pattern 3. The given var id " << var_id << " was not found in the catalog for txnid: " << txn_id << ". Exiting \n";
-                goto cleanup;
-            }
-            extreme_debug_log << "final j: " << j << endl;
-
-            indices[i] = j;
-        }
-        debug_log << "bcaster thinks entries.size is " << entries.size() << endl;
+    int64_t timestep_file_id;
+    if(hdf5_read_data) {
+    	hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, vars.at(0).timestep_id, timestep_file_id);
     }
 
-    MPI_Bcast(indices, num_vars_to_fetch, MPI_INT, 0, comm);
+    // add_timing_point(READ_PATTERN_3_VAR_INIT_DONE_START_READING);
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_3_BCAST_DONE_START_READING);
-    
-    extreme_debug_log << "x_pos: " << x_pos << endl;
-    extreme_debug_log << "y_pos: " << y_pos << endl;
-    extreme_debug_log << "z_pos: " << z_pos << endl;
-    extreme_debug_log << "x_offset : " << x_offset  << endl;
-    extreme_debug_log << "y_offset : " << y_offset  << endl;
-    extreme_debug_log << "z_offset : " << z_offset  << endl;
-    extreme_debug_log << "x_length_per_proc : " << x_length_per_proc  << endl;
-    extreme_debug_log << "y_length_per_proc : " << y_length_per_proc  << endl;
-    extreme_debug_log << "z_length_per_proc : " << z_length_per_proc  << endl;
-  
     //one proc is in charge of a certain section of the sim space
-    //it has to get all chunk info for all vars in that space, this involves asking each server for the info
-    for (int k=0; k < num_vars_to_fetch; k++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_3_START_READING_VAR);
+    //it has to get all info for all vars in that space, this involves asking each server for the info
+    for (int i=0; i < vars.size(); i++) {
+        md_catalog_var_entry var = vars.at(i);
+        if(! is_type ) {
 
-        if(k == 0) {
-            if (0 < num_vars_to_fetch) {
-                var = entries.at(indices[0]);
-                var.dims [0].min = x_offset;
-                var.dims [0].max = x_offset + x_length_per_proc - 1;
-                var.dims [1].min = y_offset;
-                var.dims [1].max = y_offset + y_length_per_proc - 1;
-                var.dims [2].min = z_offset;
-                var.dims [2].max = z_offset + z_length_per_proc - 1;
-                
-                debug_log << "read pattern 3 var: "<< to_string(k) << endl;
-                for (int j=0; j<3; j++) {
-                    debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-                    debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-                }      
-            }
-        }
-        else { 
-            extreme_debug_log << "k: " << k << endl;
-            md_catalog_var_entry temp_var = entries.at(indices[k]);
-            var.name = temp_var.name;
-            var.path = temp_var.path;
-            var.version = temp_var.version;     
-            extreme_debug_log << "name: " << var.name << endl;  
-            extreme_debug_log << "path: " << var.path << endl;  
-            extreme_debug_log << "version: " << var.version << endl; 
-            debug_log << "read pattern 3 var: "<< to_string(k) << endl;
-            for (int j=0; j<3; j++) {
-                extreme_debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-                extreme_debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-            }     
-        }
+	   		rc = read_data(timestep_file_id, run, var, proc_dims, PATTERN_3, READ_PATTERN_3_START_READING_VAR_DATA, READ_PATTERN_3_DONE_READING_VAR_DATA);
+      
+	    }
+	    else { //is_type, the data for the features of interest act as a substitute for reading the whole var
 
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_3_VAR_TO_FIND_INIT_DONE);        
+	        for (uint64_t type_id : type_ids) {
+				read_pattern_attrs(server, rank, proc_dims, run, var, num_servers, num_client_procs, txn_id, type_id,
+					READ_PATTERN_3_START_CATALOGING_VAR_ATTRS, READ_PATTERN_3_DONE_CATALOGING_VAR_ATTRS);	    	
 
-        for (int i=0; i < num_servers; i++) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_3_START_READING_FROM_NEW_SERVER);
-
-            rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-            if (rc != RC_OK) {
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(ERR_GET_CHUNK);
-                error_log << "Error retrieving chunk \n";
-                goto cleanup;
-            }
-            else{
-                if(do_debug_testing) {
-                    debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                    print_chunk_list (num_chunks, chunks);    
-                }
-            }
-        
-            if( is_type ) {
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(READ_PATTERN_3_START_GET_ATTRS);
-
-                for (int j=0; j < num_chunks; j++) {
-                    rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                    if (rc != RC_OK) {
-                        time_pts.push_back(chrono::high_resolution_clock::now());
-                        catg_of_time_pts.push_back(ERR_GET_ATTR);
-                    }
-                    else {
-                        if(do_debug_testing) {
-                            debug_log << "num attributes: " << num_attributes << endl;  
-                            print_attribute_list(num_attributes, attributes); 
-                        }        
-                    }
-                }
-                time_pts.push_back(chrono::high_resolution_clock::now());
-                catg_of_time_pts.push_back(READ_PATTERN_3_DONE_GET_ATTRS); 
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_3_DONE_READING_FROM_SERVER); 
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_3_DONE_READING_VAR); 
+			} //end for (uint64_t type_id : type_ids)
+		}
     }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_3_DONE_READING); 
+
+    if(hdf5_read_data) {
+    	hdf5_close_timestep_file(timestep_file_id);
+    }
+
+
+    add_timing_point(READ_PATTERN_3_DONE);
+
 
 cleanup:
     return rc;
@@ -482,278 +245,96 @@ cleanup:
 
 
 // 4. 1 plane in each dimension for 1 variable
-int read_pattern_4 (MPI_Comm comm, int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, 
-                    std::vector<md_catalog_var_entry> entries, int num_vars,
-                    int nx, int ny, int nz, uint64_t txn_id, uint64_t var_id)
+// int read_pattern_4 (int rank, int num_servers, const std::vector<md_server> &servers, 
+//                     bool is_type, int num_x_procs, int num_y_procs, int nx, int ny, int nz, 
+//                     uint64_t txn_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var)
+int read_pattern_4 (int rank, int num_x_procs, int num_y_procs, int nx, int ny, int nz, 
+                    uint64_t txn_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var)
 {
     
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_START);
+    add_timing_point(READ_PATTERN_4_START);
 
-    int rc;
-    
-    int index_of_var;
-    md_catalog_var_entry var;
+    int rc = RC_OK;
 
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
+   	uint32_t my_x_dim, my_y_dim;
+    uint64_t x_offset, y_offset;
 
-    int my_x_dim;
-    int my_y_dim;
+    int64_t timestep_file_id, var_id, var_data_space;
 
-    int x_offset;
-    int y_offset;
+    unsigned long long var_dims[var.num_dims];
 
-     if (rank == 0) {
-        int i=0;
-        while (i < num_vars && entries.at(i).var_id != var_id) {
-            i++;
-        }
-        if (i == num_vars) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_VAR_ID_NOT_FOUND);
-            error_log << "Error pattern 4. The given var id " << var_id << " was not found in the catalog for txnid: " << txn_id << ". Exiting \n";
-            goto cleanup;
-        }
-        index_of_var = i;
+    convert_dim_bounds_to_counts(var.dims, var_dims);
+
+    if(hdf5_read_data) {
+    	hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, var.timestep_id, timestep_file_id);
+
+		hdf5_open_var(timestep_file_id, var.name, var.version, var_id); 
+
+    	var_data_space = hdf5_get_dataspace(var_id);
+
     }
 
-    MPI_Bcast(&index_of_var, 1, MPI_INT, 0, comm);
+    vector<md_dim_bounds> plane_dims(3);
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_BCAST_DONE_START_READING);
+    for (int plane = 0; plane < 3; plane ++) {
+    	plane_dims[plane].min = var_dims[plane] / 2;
+    	plane_dims[plane].max = plane_dims[plane].min;
 
-    var = entries.at(index_of_var);
+	    int x_dim;
+    	int y_dim;
 
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    //! do a plane in dim(3)
-    my_x_dim = ny / num_x_procs;
-    my_y_dim = nz / num_y_procs;
+	    if(plane == 0 ) {
+	    	x_dim = 1;
+	    }
+	    else { 
+	    	x_dim = 0;
+	    }
+	    if(plane == 2) {
+	    	y_dim = 1;
+	    }
+	    else {
+	    	y_dim = 2;
+	    }
 
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
+	    my_x_dim = var_dims[x_dim] / num_x_procs;
+	    my_y_dim = var_dims[y_dim] / num_y_procs;
 
-    extreme_debug_log << "my_x_dim: " << my_x_dim << endl;
-    extreme_debug_log << "my_y_dim: " << my_y_dim << endl;
-    extreme_debug_log << "x_offset: " << x_offset << endl;
-    extreme_debug_log << "y_offset: " << y_offset << endl;
+	    x_offset = (rank % num_x_procs) * my_x_dim;
+    	y_offset = (rank/num_x_procs) * my_y_dim;
 
-    var.txn_id = txn_id;
-    var.dims [0].min = nx / 2;
-    var.dims [0].max = nx /2;
-    var.dims [1].min = x_offset;
-    var.dims [1].max = x_offset + my_x_dim - 1;
-    var.dims [2].min = y_offset;
-    var.dims [2].max = y_offset + my_y_dim - 1;
-    
-    debug_log << "read pattern 4 plane 1" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
+    	plane_dims[x_dim].min = x_offset;
+    	plane_dims[x_dim].max = x_offset + my_x_dim - 1;
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE); 
+    	plane_dims[y_dim].min = y_offset;
+    	plane_dims[y_dim].max = y_offset + my_y_dim - 1;
 
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_START_READING_FROM_NEW_SERVER); 
+	    // plane_vol = my_x_dim * my_y_dim;
+   
+	    debug_log << "read pattern 4 plane " << plane << endl;
+	    for (int j=0; j<3; j++) {
+	        debug_log <<  "dims [" << to_string(j) << "] min is: " << plane_dims[j].min << endl;
+	        debug_log <<  "dims [" << to_string(j) << "] max is: " << plane_dims[j].max << endl;
+	    }  
 
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);
-            error_log << "Error retrieving chunk \n";        
-            goto cleanup;
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);  
-            }      
-        }
+    	// add_timing_point(READ_PATTERN_4_PLANE_TO_FIND_INIT_DONE_START_READING_VAR_DATA); 
 
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_START_GET_ATTRS);
+	    extreme_debug_log << "my_x_dim: " << my_x_dim << endl;
+	    extreme_debug_log << "my_y_dim: " << my_y_dim << endl;
+	    extreme_debug_log << "x_offset: " << x_offset << endl;
+	    extreme_debug_log << "y_offset: " << y_offset << endl;
 
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                    time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);
-                }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes); 
-                    }        
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_DONE_GET_ATTRS);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_FROM_SERVER);
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_PLANE);
- 
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    //! do a plane in dim(2)
-    my_x_dim = nx / num_x_procs;
-    my_y_dim = nz / num_y_procs;
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
+	   	rc = read_data(timestep_file_id, run, var, plane_dims, PATTERN_4, READ_PATTERN_4_START_READING_VAR_DATA, READ_PATTERN_4_DONE_READING_VAR_DATA);
 
-    extreme_debug_log << "my_x_dim: " << my_x_dim << endl;
-    extreme_debug_log << "my_y_dim: " << my_y_dim << endl;
-    extreme_debug_log << "x_offset: " << x_offset << endl;
-    extreme_debug_log << "y_offset: " << y_offset << endl;
+	}
 
-    var.dims [0].min = x_offset;
-    var.dims [0].max = x_offset + my_x_dim - 1;
-    var.dims [1].min = ny / 2;
-    var.dims [1].max = ny / 2;
-    var.dims [2].min = y_offset;
-    var.dims [2].max = y_offset + my_y_dim - 1;
+	if (hdf5_read_data) {
+	 	// Close/release resources.
+	    hdf5_close_dataspace(var_data_space); 
+		hdf5_close_var(var_id);
+    	hdf5_close_timestep_file(timestep_file_id);
+	}
 
-    debug_log << "read pattern 4 plane 2" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE);
-
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_START_READING_FROM_NEW_SERVER);
-
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);
-            }        
-        }
-
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_START_GET_ATTRS);
-
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                  time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes); 
-                    }        
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_DONE_GET_ATTRS);
-        }
-
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_FROM_SERVER);
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_PLANE);
-
-
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    //! do a plane in dim(1)
-    my_x_dim = nx / num_x_procs;
-    my_y_dim = ny / num_y_procs;
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
-
-    debug_log << "my_x_dim: " << to_string(my_x_dim) << endl;
-    debug_log << "my_y_dim: " << to_string(my_y_dim) << endl;
-    debug_log << "x_offset: " << to_string(x_offset) << endl;
-    debug_log << "y_offset: " << to_string(y_offset) << endl;
-
-    var.dims [0].min = x_offset;
-    var.dims [0].max = x_offset + my_x_dim - 1;
-    var.dims [1].min = y_offset;
-    var.dims [1].max = y_offset + my_y_dim -1;
-    var.dims [2].min = nz / 2;
-    var.dims [2].max = nz / 2;
-
-    debug_log << "read pattern 4 plane 3" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE);
-
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_START_READING_FROM_NEW_SERVER);
-
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);            
-            goto cleanup;
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);  
-            }     
-        }
-
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_START_GET_ATTRS);
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                  time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes);  
-                    }       
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_4_DONE_GET_ATTRS); 
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_FROM_SERVER); 
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING_PLANE); 
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_4_DONE_READING); 
+    add_timing_point(READ_PATTERN_4_DONE); 
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 cleanup:
     debug_log << "initiating cleanup" << endl;
@@ -761,24 +342,19 @@ cleanup:
     return rc;
 }
 
+
 // 5. an arbitrary rectangular subset representing a cubic area of interest
-int read_pattern_5 (MPI_Comm comm, int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, 
-                    int num_z_procs, std::vector<md_catalog_var_entry> entries, int num_vars,
-                    int nx, int ny, int nz, uint64_t txn_id, uint64_t var_id)
+// int read_pattern_5 (int rank, int num_servers, const std::vector<md_server> &servers, 
+//                     bool is_type, int num_x_procs, int num_y_procs, int num_z_procs, 
+//                     int nx, int ny, int nz, uint64_t txn_id, const md_catalog_run_entry &run,
+//                     const md_catalog_var_entry &var)
+int read_pattern_5 (int rank, int num_x_procs, int num_y_procs, int num_z_procs, 
+                    int nx, int ny, int nz, uint64_t txn_id, const md_catalog_run_entry &run,
+                    const md_catalog_var_entry &var)
 {
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_5_START);
+    add_timing_point(READ_PATTERN_5_START);
 
-    int rc;
-
-    int index_of_var;
-    md_catalog_var_entry var;
-
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
+    int rc = RC_OK;
 
     int my_x_dim;
     int my_y_dim;
@@ -788,25 +364,12 @@ int read_pattern_5 (MPI_Comm comm, int rank, int num_servers, std::vector<metada
     int y_offset;
     int z_offset;
 
+    int64_t timestep_file_id;
 
-       if (rank == 0) {
-        int i=0;
-        while (i < num_vars && entries.at(i).var_id != var_id) {
-            i++;
-        }
-        if (i == num_vars) {
-            error_log << "Error pattern 5. The given var id " << var_id << " was not found in the catalog for txnid: " << txn_id << ". Exiting \n";
-            goto cleanup;
-        }
-        index_of_var = i;
+    if(hdf5_read_data) {
+    	hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, var.timestep_id, timestep_file_id);
     }
 
-    MPI_Bcast(&index_of_var, 1, MPI_INT, 0, comm);
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_5_BCAST_DONE);
-
-    var = entries.at(index_of_var);
 
     extreme_debug_log << "num_x_procs: " << num_x_procs << endl;
     extreme_debug_log << "num_y_procs: " << num_y_procs << endl;
@@ -829,69 +392,30 @@ int read_pattern_5 (MPI_Comm comm, int rank, int num_servers, std::vector<metada
     extreme_debug_log << "y_offset: " << y_offset << endl;
     extreme_debug_log << "z_offset: " << z_offset << endl;
 
-    var.txn_id = txn_id;
-    var.dims [0].min = nx / 4 + x_offset;
-    var.dims [0].max = nx / 4 + x_offset + my_x_dim - 1;
-    var.dims [1].min = ny / 4 + y_offset;
-    var.dims [1].max = ny / 4 + y_offset + my_y_dim -1;
-    var.dims [2].min = nz / 4 + z_offset;
-    var.dims [2].max = nz / 4 + z_offset + my_z_dim -1;
+    uint32_t num_dims = 3;
+    vector<md_dim_bounds> dims(num_dims);
+    dims [0].min = nx / 4 + x_offset;
+    dims [0].max = nx / 4 + x_offset + my_x_dim - 1;
+    dims [1].min = ny / 4 + y_offset;
+    dims [1].max = ny / 4 + y_offset + my_y_dim -1;
+    dims [2].min = nz / 4 + z_offset;
+    dims [2].max = nz / 4 + z_offset + my_z_dim -1;
 
     debug_log << "read pattern 5" << endl;
     for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
+        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(dims [j].min) << endl;
+        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(dims [j].max) << endl;
     }  
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_5_VAR_INIT_DONE_START_READING);
+	rc = read_data(timestep_file_id, run, var, dims, PATTERN_5, READ_PATTERN_5_START_READING_VAR_DATA, READ_PATTERN_5_DONE_READING_VAR_DATA);
 
 
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_5_START_READING_FROM_NEW_SERVER);
 
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);  
-            }      
-        }
-
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_5_START_GET_ATTRS);
-
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                  time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes);  
-                    }       
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_5_DONE_GET_ATTRS);
-        }
-        
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_5_DONE_READING_FROM_SERVER);
+    if(hdf5_read_data) {
+		hdf5_close_timestep_file(timestep_file_id);
     }
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_5_DONE_READING);
+    add_timing_point(READ_PATTERN_5_DONE);
 
 cleanup:
     debug_log << "initiating cleanup" << endl;
@@ -900,24 +424,16 @@ cleanup:
 }
 
 // 6. an arbitrary area on an orthogonal plane (decomposition dimensions) aka partial plane
-int read_pattern_6 (MPI_Comm comm, int rank, int num_servers, std::vector<metadata_server> servers, 
-                    bool is_type, int num_x_procs, int num_y_procs, 
-                    std::vector<md_catalog_var_entry> entries, int num_vars,
-                    int nx, int ny, int nz, uint64_t txn_id, uint64_t var_id)
+// int read_pattern_6 (int rank, int num_servers, const std::vector<md_server> &servers, 
+//                     bool is_type, int num_x_procs, int num_y_procs, int nx, int ny, int nz, 
+//                     uint64_t txn_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var)
+int read_pattern_6 (int rank, int num_x_procs, int num_y_procs, int nx, int ny, int nz, 
+                    uint64_t txn_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var)
 {
     
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_START);
+    add_timing_point(READ_PATTERN_6_START);
 
-    int rc;
-
-    int index_of_var;
-    md_catalog_var_entry var;
-
-    uint32_t num_chunks;
-    std::vector<md_chunk_entry> chunks;
-    uint32_t num_attributes;
-    std::vector<md_attribute_entry> attributes;
+    int rc = RC_OK;
 
     int my_x_dim;
     int my_y_dim;
@@ -925,235 +441,73 @@ int read_pattern_6 (MPI_Comm comm, int rank, int num_servers, std::vector<metada
     int x_offset;
     int y_offset;
 
-      if (rank == 0) {
-        int i=0;
-        while (i < num_vars && entries.at(i).var_id != var_id) {
-            i++;
-        }
-        if (i == num_vars) {
-            error_log << "Error pattern 6. The given var id " << var_id << " was not found in the catalog for txnid: " << txn_id << ". Exiting \n";
-            goto cleanup;
-        }
-        index_of_var = i;
+
+    int64_t timestep_file_id, var_id, var_data_space;
+    unsigned long long var_dims[var.num_dims];
+
+    convert_dim_bounds_to_counts(var.dims, var_dims);
+
+    if(hdf5_read_data) {
+    	hdf5_open_timestep_file_collectively_for_read(run.name, run.job_id, var.timestep_id, timestep_file_id);
+
+		hdf5_open_var(timestep_file_id, var.name, var.version, var_id); 
+
+    	var_data_space = hdf5_get_dataspace(var_id);
     }
 
-    MPI_Bcast(&index_of_var, 1, MPI_INT, 0, comm);
+  	vector<md_dim_bounds> plane_dims(3);
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_BCAST_DONE_START_READING);
+	for (int plane = 0; plane < 3; plane ++) {
+	    plane_dims[2-plane].min = var_dims[2-plane] / 4;
+	    plane_dims [2-plane].max = plane_dims[2-plane].min;
 
-    var = entries.at(index_of_var);
+	    int x_dim;
+    	int y_dim;
+
+	    if(plane == 0 ) {
+	    	x_dim = 1;
+	    }
+	    else { 
+	    	x_dim = 2;
+	    }
+	    if(plane == 2) {
+	    	y_dim = 1;
+	    }
+	    else {
+	    	y_dim = 0;
+	    }
+
+	    my_x_dim = var_dims[x_dim] / num_x_procs / 2;
+	    my_y_dim = var_dims[y_dim] / num_y_procs / 2;
+
+	    x_offset = (rank % num_x_procs) * my_x_dim;
+    	y_offset = (rank/num_x_procs) * my_y_dim;
 
 
-   //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // read in dim(1)
-    my_x_dim = ny / num_x_procs / 2;
-    my_y_dim = nx / num_y_procs / 2;
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
+	    plane_dims [x_dim].min = var_dims[x_dim]/4 + x_offset;
+	    plane_dims [x_dim].max = plane_dims[x_dim].min + my_x_dim - 1;
 
-    var.txn_id = txn_id;
-    var.dims [0].min = nx / 4 + y_offset;
-    var.dims [0].max = nx / 4 + y_offset + my_y_dim - 1;
-    var.dims [1].min = ny / 4 + x_offset;
-    var.dims [1].max = ny / 4 + x_offset + my_x_dim -1;
-    var.dims [2].min = nz / 4;
-    var.dims [2].max = nz / 4;
+	    plane_dims [y_dim].min = var_dims[y_dim]/4 + y_offset;
+	    plane_dims [y_dim].max = plane_dims[y_dim].min + my_y_dim - 1;
 
-    debug_log << "read pattern 6 plane 1" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
+	    // plane_vol = my_x_dim * my_y_dim;
+   
+	    debug_log << "read pattern 6 plane " << plane << endl;
+	    for (int j=0; j<3; j++) {
+	        debug_log <<  "dims [" << to_string(j) << "] min is: " << plane_dims [j].min << endl;
+	        debug_log <<  "dims [" << to_string(j) << "] max is: " << plane_dims [j].max << endl;
+	    }  
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE);
+	   	rc = read_data(timestep_file_id, run, var, plane_dims, PATTERN_6, READ_PATTERN_6_START_READING_VAR_DATA, READ_PATTERN_6_DONE_READING_VAR_DATA);
+	}
 
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_START_READING_FROM_NEW_SERVER);
-
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);        
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);   
-            }     
-        }
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_START_GET_ATTRS);
-
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                    time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              
-                }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes); 
-                    }        
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_DONE_GET_ATTRS);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_FROM_SERVER);
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_PLANE);
-
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // read in dim(2)
-    my_x_dim = nz / num_x_procs / 2;
-    my_y_dim = nx / num_y_procs / 2;
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
-
-    var.dims [0].min = nx / 4 + y_offset;
-    var.dims [0].max = nx / 4 + y_offset + my_y_dim - 1;
-    var.dims [1].min = ny / 4;
-    var.dims [1].max = ny / 4;
-    var.dims [2].min = nz / 4 + x_offset;
-    var.dims [2].max = nz / 4 + x_offset + my_x_dim -1;
-    
-    debug_log << "read pattern 6 plane 2" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE);
-
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_START_READING_FROM_NEW_SERVER);
-
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);        
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);  
-            }      
-        }
-
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_START_GET_ATTRS);
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                    time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              
-                }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes);
-                    }         
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_DONE_GET_ATTRS);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_FROM_SERVER);
-    }
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_PLANE);
-
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // read in dim(3)
-    my_x_dim = nz / num_x_procs / 2;
-    my_y_dim = ny / num_y_procs / 2;
-    x_offset = (rank % num_x_procs) * my_x_dim;
-    y_offset = (rank/num_x_procs) * my_y_dim;
-
-    var.dims [0].min = nx / 4;
-    var.dims [0].max = nx / 4;
-    var.dims [1].min = ny / 4 + y_offset;
-    var.dims [1].max = ny / 4 + y_offset + my_y_dim - 1;
-    var.dims [2].min = nz / 4 + x_offset;
-    var.dims [2].max = nz / 4 + x_offset + my_x_dim -1;
-
-    debug_log << "read pattern 6 plane 3" << endl;
-    for (int j=0; j<3; j++) {
-        debug_log <<  "dims [" << to_string(j) << "] min is: " << to_string(var.dims [j].min) << endl;
-        debug_log <<  "dims [" << to_string(j) << "] max is: " << to_string(var.dims [j].max) << endl;
-    }  
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_PLANE_TO_FIND_INIT_DONE_START_READING_PLANE);
-
-    for (int i=0; i < num_servers; i++) {
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_START_READING_FROM_NEW_SERVER);
-
-        rc = metadata_get_chunk (servers.at(i), var, num_chunks, chunks);
-        if (rc != RC_OK) {
-            error_log << "Error retrieving chunk \n";
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(ERR_GET_CHUNK);        
-        }
-        else{
-            if(do_debug_testing) {
-                debug_log << "chunk list for varid: " << var.var_id << " txn_id: " << var.txn_id << " name: " 
-                      << var.name << " path: " << var.path << " version: " << var.version 
-                      << " (count: " << num_chunks << ") \n";
-                print_chunk_list (num_chunks, chunks);        
-            }
-        }
-
-        if( is_type ) {
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_START_GET_ATTRS);
-
-            for (int j=0; j < num_chunks; j++) {
-                rc = metadata_get_attribute(servers.at(i), txn_id, chunks.at(j).chunk_id, num_attributes, attributes);
-                if (rc != RC_OK) {
-                    error_log << "Error retrieving attribute \n";
-                    time_pts.push_back(chrono::high_resolution_clock::now());
-                    catg_of_time_pts.push_back(ERR_GET_ATTR);              
-                }
-                else {
-                    if(do_debug_testing) {
-                        debug_log << "num attributes: " << num_attributes << endl;  
-                        print_attribute_list(num_attributes, attributes);
-                    }         
-                }
-            }
-            time_pts.push_back(chrono::high_resolution_clock::now());
-            catg_of_time_pts.push_back(READ_PATTERN_6_DONE_GET_ATTRS);
-        }
-        time_pts.push_back(chrono::high_resolution_clock::now());
-        catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_FROM_SERVER);
+	if (hdf5_read_data) {
+	    hdf5_close_dataspace(var_data_space); 
+		hdf5_close_var(var_id);
+    	hdf5_close_timestep_file(timestep_file_id);
     }
 
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING_PLANE);
-
-    time_pts.push_back(chrono::high_resolution_clock::now());
-    catg_of_time_pts.push_back(READ_PATTERN_6_DONE_READING);
+    add_timing_point(READ_PATTERN_6_DONE);
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 cleanup:
@@ -1162,3 +516,124 @@ cleanup:
 }
 
 
+int read_data(int64_t timestep_file_id, const md_catalog_run_entry &run, const md_catalog_var_entry &var, 
+			const vector<md_dim_bounds> &proc_dims, OBJECTOR_PARAMS_READ_TYPES catg, uint16_t data_read_start_code,
+			uint16_t data_read_done_code
+			) 
+{
+	int rc = RC_OK;
+
+    if(generate_obj_names) {
+        add_timing_point(BOUNDING_BOX_TO_OBJ_NAMES_START);
+
+        std::vector<std::string> obj_names;
+        std::vector<uint64_t> offsets_and_counts;
+
+        rc = boundingBoxToObjNamesAndCounts (run, var, proc_dims, obj_names, offsets_and_counts);
+        if (rc != RC_OK) {
+            error_log << "error in boundingBoxToObjNamesAndCounts \n";
+            return rc;
+        }
+        //note - this is where the data should then be retrieved
+
+        add_timing_point(BOUNDING_BOX_TO_OBJ_NAMES_DONE);
+    }
+	else if (output_objector_params) {
+		all_objector_params.push_back( get_objector_params(run, var, proc_dims, catg) );
+
+        add_objector_point(BOUNDING_BOX_TO_OBJ_NAMES, 1);
+    }
+    else if (output_obj_names) {
+        rc = add_object_names_offests_and_counts(run, var, proc_dims, catg);  
+        if (rc != RC_OK) {
+            error_log << "error in add_object_names_offests_and_counts \n";
+            return rc;
+        }
+        // NOTE: THIS IS WHERE DATA WOULD BE READ
+    }
+    else if(hdf5_read_data) {
+        add_timing_point(data_read_start_code);
+
+       	hdf5_read_hyperslab(timestep_file_id, var, proc_dims);
+
+        add_timing_point(data_read_done_code);
+    }
+   	return rc;
+}
+
+
+
+int read_pattern_attrs(md_server server, int rank, const vector<md_dim_bounds> &proc_dims, 
+	const md_catalog_run_entry &run, 
+	const md_catalog_var_entry &var, uint32_t num_servers, uint32_t num_client_procs,
+	uint64_t txn_id, uint64_t type_id,
+	uint16_t catalog_attr_start_code, uint16_t catalog_attr_done_code
+	)
+{
+	int rc = RC_OK;
+
+    add_timing_point(catalog_attr_start_code);
+
+    std::vector<md_catalog_var_attribute_entry> var_attr_entries;
+    vector<md_catalog_var_attribute_entry> all_var_attr_entries;
+
+    uint32_t num_var_attr_entries = 0;
+    if(rank < num_servers) {
+
+    	rc = metadata_catalog_all_var_attributes_with_type_var_by_id (server, var.timestep_id, 
+    		type_id, var.var_id, txn_id, num_var_attr_entries, var_attr_entries); 
+
+        if (rc != RC_OK) {
+            add_timing_point(ERR_CATALOG_ATTR);
+        }
+        else {
+            // if(testing_logging) {
+            //     testing_log << "using var attr by var dims id funct: var_attr_entries associated with with run_id " << var.run_id <<
+            //     	", var.timestep_id " << var.timestep_id << ", type_id " << type_id << 
+            //         " and var " << var.name << " ver " << var.version << 
+            //         " and rank: " << rank <<  "\n";
+            //     print_var_attribute_list (num_var_attr_entries, var_attr_entries);
+            //     print_var_attr_data(num_var_attr_entries, var_attr_entries);
+            // }
+        }
+    }
+    gather_attr_entries(var_attr_entries, num_var_attr_entries, rank, num_servers, num_client_procs, all_var_attr_entries);
+    if(zero_rank_logging && rank == 0) {
+        zero_rank_log << "rank: " << rank << " all var var_attr_entries associated with run_id " << var.run_id << 
+        	" and var.timestep_id " << var.timestep_id << ", type_id " << type_id <<
+            " and var_id: " << var.var_id << " note: all_var_attr_entries.size(): " << all_var_attr_entries.size() << endl;
+        print_var_attribute_list (all_var_attr_entries.size(), all_var_attr_entries);
+        print_var_attr_data(all_var_attr_entries.size(), all_var_attr_entries);
+    }
+    add_timing_point(catalog_attr_done_code);
+
+    if (output_objector_params) {
+    	num_var_attr_entries = 0;
+        for (md_catalog_var_attribute_entry attr : all_var_attr_entries) {
+       		if (dims_overlap ( attr.dims, proc_dims) ) {
+       			extreme_debug_log << "for rank: " << rank << " found a matching bb" << endl;
+				all_objector_params.push_back( get_objector_params(run, var, attr.dims, PATTERN_2_ATTRS) );
+				num_var_attr_entries += 1;
+			}
+        }
+        add_objector_point(BOUNDING_BOX_TO_OBJ_NAMES, num_var_attr_entries);	        
+    }
+    else if (output_obj_names) {
+        for (md_catalog_var_attribute_entry attr : all_var_attr_entries) {
+       		if (dims_overlap ( attr.dims, proc_dims) ) {
+	            rc = add_object_names_offests_and_counts(run, var, get_overlapping_dims_for_bounding_box(attr.dims, proc_dims), PATTERN_2_ATTRS);  
+	            if (rc != RC_OK) {
+	                error_log << "error in add_object_names_offests_and_counts \n";
+	                return rc;
+	            }
+	            // NOTE: THIS IS WHERE DATA WOULD BE READ
+	       		extreme_debug_log << "for rank: " << rank << " found a matching bb" << endl;
+	        }
+	    }
+    }
+    else if (hdf5_read_data) {
+		read_data_for_attrs(run, var, all_var_attr_entries, proc_dims);
+    }
+
+    return rc;
+}

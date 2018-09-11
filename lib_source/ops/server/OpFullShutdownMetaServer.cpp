@@ -1,22 +1,22 @@
-/*
+/* 
  * Copyright 2018 National Technology & Engineering Solutions of
  * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
  * the U.S. Government retains certain rights in this software.
  *
  * The MIT License (MIT)
- *
+ * 
  * Copyright (c) 2018 Sandia Corporation
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,6 +26,7 @@
  * THE SOFTWARE.
  */
 
+
 #include "OpFullShutdownMetaCommon.hh"
 
 extern bool md_shutdown;
@@ -33,21 +34,20 @@ extern bool md_shutdown;
 using namespace std;
 
 WaitingType OpFullShutdownMeta::UpdateTarget(OpArgs &args, results_t *results) {
-  switch(state){
-
-    case State::start: {
-    md_shutdown = true;
-    state=State::done;
-    return WaitingType::done_and_destroy;
-  }
-  case State::done:
-    return WaitingType::done_and_destroy;
-  }
+  	switch(state){
+	    case State::start: {
+		    md_shutdown = true;
+		    state=State::done;
+		    return WaitingType::done_and_destroy;
+	  	}
+		case State::done:
+	    	return WaitingType::done_and_destroy;
+	}
 }
 //WaitingType OpFullShutdownMeta::UpdateOrigin(OpArgs &args, results_t *results) {
 WaitingType OpFullShutdownMeta::UpdateOrigin(OpArgs &, results_t *) {
   
-  return WaitingType::error;
+	return WaitingType::error;
 
 }
 
