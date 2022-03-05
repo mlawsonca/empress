@@ -1,42 +1,20 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
 
 
+#include <stdint.h>
 
 #ifndef RC_ENUM
 #define RC_ENUM
 enum RC
 {
     RC_OK = 0,
+    RC_DB_RESET = 1,
+    RC_DB_BUSY = 2,
     RC_ERR = -1
 };
 #endif //RC_ENUM
 
+#define ALL_RUNS 18446744073709551615
+#define ALL_TIMESTEPS 18446744073709551615
 
 #ifndef ATTR_DATA_TYPE_ENUM
 #define ATTR_DATA_TYPE_ENUM
@@ -74,12 +52,70 @@ enum md_catalog_type : unsigned short
 };
 #endif //MD_CATALOG_TYPE_ENUM
 
+#ifndef MD_DB_CHECKPOINT_TYPE_ENUM
+#define MD_DB_CHECKPOINT_TYPE_ENUM
+enum md_db_checkpoint_type : unsigned short
+{
+    DB_COPY = 0,
+    DB_INCR_OUTPUT = 1,
+    DB_COPY_AND_DELETE = 2,
+    DB_COPY_AND_RESET = 3,
+    DB_INCR_OUTPUT_AND_DELETE = 4,
+    DB_INCR_OUTPUT_AND_RESET = 5,
+};
+#endif //MD_DB_CHECKPOINT_TYPE_ENUM
+
+#ifndef MD_WRITE_TYPE_ENUM
+#define MD_WRITE_TYPE_ENUM
+enum md_write_type : unsigned short
+{
+    WRITE_REG = 0,
+    WRITE_GATHERED = 1,
+    WRITE_LARGE_MD_VOL = 2,
+    WRITE_HDF5 = 3,
+    WRITE_IMBALANCE = 4,
+};
+#endif //MD_WRITE_TYPE_ENUM
+
+#ifndef MD_SERVER_TYPE_ENUM
+#define MD_SERVER_TYPE_ENUM
+enum md_server_type : unsigned short
+{
+	SERVER_DEDICATED_IN_MEM = 0,
+	SERVER_DEDICATED_ON_DISK = 1,
+	SERVER_LOCAL_IN_MEM = 2,
+	SERVER_LOCAL_ON_DISK = 3,
+    SERVER_IMBALANCE_FIX = 4, 
+    // SERVER_DEDICATED_SQLITE_TRANSACTION_MANAGEMENT_WRITE_ONLY = 5,
+    SERVER_DEDICATED_SQLITE_TRANSACTION_MANAGEMENT_WAL = 6,
+    SERVER_DEDICATED_SQLITE_TRANSACTION_MANAGEMENT_DB_STREAMS = 7,
+    SERVER_DEDICATED_D2T_TRANSACTION_MANAGEMENT = 8,
+    // SERVER_LOCAL_SQLITE_TRANSACTION_MANAGEMENT_WRITE_ONLY = 9,
+    SERVER_LOCAL_SQLITE_TRANSACTION_MANAGEMENT_WAL = 10,
+    SERVER_LOCAL_SQLITE_TRANSACTION_MANAGEMENT_DB_STREAMS = 11,
+    SERVER_LOCAL_D2T_TRANSACTION_MANAGEMENT = 12,   
+};
+#endif //MD_SERVER_TYPE_ENUM
+
+
+#ifndef MD_DB_INDEX_TYPE_ENUM
+#define MD_DB_INDEX_TYPE_ENUM
+enum md_db_index_type : unsigned short
+{
+    WRITE_INDEX=0,
+    WRITE_DELAYED_INDEX = 1,
+    INDEX_RTREE = 2,
+};
+#endif //MD_DB_INDEX_TYPE_ENUM
+
+
 #ifndef MYMETADATA_ARGS_H
 #define MYMETADATA_ARGS_H
 
 #include <vector>
 #include <stdint.h>
 #include <boost/serialization/vector.hpp>
+#include <iostream>
 
 //for debugging testing purposes/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,10 +163,18 @@ struct debugLog {
 
 
 
+
 struct md_dim_bounds
 {
-    uint64_t min;
-    uint64_t max;
+    double min;
+    double max;
+
+    md_dim_bounds() {}
+
+    md_dim_bounds(double my_min, double my_max) {
+        min = my_min;
+        max = my_max;
+    }
 
     template <typename Archive>
     void serialize(Archive& ar, const unsigned int ver)
@@ -144,6 +188,7 @@ struct md_dim_bounds
 struct md_catalog_run_attribute_entry
 {
     uint64_t attribute_id;
+    uint64_t run_id;
     uint64_t type_id;
     uint32_t active;
     uint64_t txn_id; 
@@ -154,6 +199,7 @@ struct md_catalog_run_attribute_entry
     void serialize(Archive& ar, const unsigned int ver)
     {
     ar & attribute_id;
+    ar & run_id;
     ar & type_id;
     ar & active;
     ar & txn_id;
@@ -380,6 +426,11 @@ struct objector_params
 //     ar & bounding_box;
 //     }
 // };
+
+struct op_args
+{
+
+};
 
 struct md_activate_args
 {
@@ -1234,6 +1285,7 @@ struct md_delete_var_by_name_path_ver_args
 
 struct md_insert_run_attribute_args
 {
+    uint64_t run_id;
     uint64_t type_id;
     /* int active is initialized to 0 (inactive) */
     uint64_t txn_id;
@@ -1244,6 +1296,7 @@ struct md_insert_run_attribute_args
     template <typename Archive>
     void serialize(Archive& ar, const unsigned int ver)
     {
+      ar & run_id;
       ar & type_id;
       ar & txn_id;
       ar & data_type;
@@ -1601,6 +1654,21 @@ struct md_delete_all_vars_with_substr_args
       ar & var_name_substr;
     }
 };
+
+
+struct md_checkpoint_database_args
+{
+    uint64_t job_id; /* if an in-process txn, must provide */  
+    md_db_checkpoint_type checkpt_type;
+
+    template <typename Archive>
+    void serialize(Archive& ar, const unsigned int ver)
+    {
+      ar & job_id;
+      ar & checkpt_type;
+    }
+};
+
 
 
 #endif //MYMETADATA_ARGS_H

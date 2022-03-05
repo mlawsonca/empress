@@ -1,32 +1,3 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-
 
 #include <client_timing_constants_read_hdf5.hh>
 
@@ -356,7 +327,7 @@ void catalog_run_attributes_with_type_or_val_functs ( int rank, uint32_t num_cli
 	if(rank == 0) {
 	  	open_run_and_attr_table_for_read (run_name, job_id, run_file_id, run_attr_table_id);
 
-    	metadata_catalog_all_run_attributes_with_type (run_attr_table_id, type_name, attr_entries);
+    	metadata_catalog_all_run_attributes_with_type_in_run (run_attr_table_id, type_name, attr_entries);
         testing_log << "rank: " << rank << " all attr_entries associated with" 
             " type_name " << type_name << endl;
     	print_run_attribute_list (attr_entries);
@@ -395,7 +366,7 @@ void catalog_timestep_attributes_with_type_or_val_functs ( int rank, uint32_t nu
 		open_timestep_file_and_timestep_attr_table_for_read(timestep_file_name, 
 				timestep.file_id, timestep.timestep_attr_table_id);
 
-    	metadata_catalog_all_timestep_attributes_with_type (timestep.timestep_attr_table_id, type_name, attr_entries);
+    	metadata_catalog_all_timestep_attributes_with_type_in_timestep (timestep.timestep_attr_table_id, type_name, attr_entries);
   		testing_log << "rank: " << rank << " all timestep attributes associated with timestep_id " <<
   			timestep_id << " type_name " << type_name << endl;
     	print_timestep_attribute_list (attr_entries);

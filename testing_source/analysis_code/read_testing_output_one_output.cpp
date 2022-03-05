@@ -1,32 +1,3 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-
 
 #include <fstream>
 #include <stdio.h>
@@ -99,23 +70,23 @@ int main(int argc, char **argv) {
 
 	// string testing_type = argv[1];
 	vector<string> clusters;
-	string run_type = "gscratch";
+	string run_type = "scratch";
 	// string run_type = "local";
 	// string run_type = "remote";
 
-	if(run_type == "gscratch") {
-		// clusters.push_back("serrano");
-		clusters.push_back("skybridge"); //fix
-		clusters.push_back("chama");
-		// clusters.push_back("ghost");
-		// clusters.push_back("eclipse");
+	if(run_type == "scratch") {
+		// clusters.push_back("cluster_d");
+		clusters.push_back("cluster_a"); //fix
+		// clusters.push_back("cluster_b");
+		// clusters.push_back("cluster_c");
+		// clusters.push_back("cluster_e");
 	}
 	else {
-		// clusters.push_back("chama");
-		// clusters.push_back("serrano");
-		// clusters.push_back("ghost");	
-		// clusters.push_back("skybridge");	
-		clusters.push_back("eclipse");
+		// clusters.push_back("cluster_b");
+		// clusters.push_back("cluster_d");
+		// clusters.push_back("cluster_c");	
+		// clusters.push_back("cluster_a");	
+		clusters.push_back("cluster_e");
 	}
 
 	extreme_debug_log << "got here \n";
@@ -137,25 +108,18 @@ int main(int argc, char **argv) {
 		string results_path;
 
 		if (run_type == "remote") {
-				int n = sprintf(output_dir, "/ascldap/users/mlawso/sirius/runtime/runtime_%s/run_build",cluster_name.c_str()); 
-				results_path = "/ascldap/users/mlawso/sirius/testing_source/analysis_code/analysis";
-			// int n = sprintf(output_dir, "/ascldap/users/mlawso/sirius/testing_source/analysis_code/fake_outputs_for_debugging_new"); 
+				int n = sprintf(output_dir, "FILL_IN_WITH_DESIRED_VALUE",cluster_name.c_str()); 
+				results_path = "FILL_IN_WITH_DESIRED_VALUE";
+			// int n = sprintf(output_dir, "PATH_TO_EMPRESS/testing_source/analysis_code/fake_outputs_for_debugging_new"); 
 		}
-		else if (run_type == "gscratch") {
-			int n = sprintf(output_dir, "/gscratch/mlawso/runtime_%s/output/correct_copy_updated",cluster_name.c_str()); 
+		else if (run_type == "scratch") {
+			int n = sprintf(output_dir, "FILL_IN_WITH_DESIRED_VALUE",cluster_name.c_str()); 
 			results_path = (string)output_dir + "/analysis";
 			cout << "results_path: " << results_path << endl;
-			// results_path = "/ascldap/users/mlawso/sirius/testing_source/analysis_code/analysis"; //fix
+			// results_path = "PATH_TO_EMPRESS/testing_source/analysis_code/analysis"; //fix
 		}
-		// else { // run_type == "local"
-		// 	// int n = sprintf(output_dir, "/Users/mlawso/sirius/testing_source/analysis_code/fake_outputs_for_debugging_new"); 
-		// 	int n = sprintf(output_dir, "/Users/mlawso/sirius/testing_source/analysis_code/log_outputs_serrano_small"); 
-		// 				results_path = "/ascldap/users/mlawso/sirius/testing_source/analysis_code/analysis";
-
-		// }
+		
 		cout << "reading files from: " << output_dir << endl;
-		// int n = sprintf(output_dir, "/Users/margaretlawson/Sublime_Text/sirius/testing_source/analysis");
-		// string output_type;
 
 		if( (runtime_output = opendir(output_dir)) ) {
 			while(	(entry = readdir(runtime_output)) ) {

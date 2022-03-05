@@ -1,45 +1,19 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+
 
 
 #ifndef MYMETADATA_CLIENT_H
 #define MYMETADATA_CLIENT_H
 
-#include <gutties/Gutties.hh>
+//
 #include <opbox/net/net.hh>
 #include <my_metadata_args.h>
-
+// #include <OpCoreClient.hh>
 
 struct md_server
 {
-    gutties::name_and_node_t name_and_node;
+    faodel::NameAndNode name_and_node;
     std::string URL;
-    net::peer_ptr_t peer_ptr;
+    opbox::net::peer_ptr_t peer_ptr;
 
     template <typename Archive>
     void serialize(Archive& ar, const unsigned int ver)
@@ -72,11 +46,17 @@ void print_run_attribute_list (uint32_t num_vars, const std::vector<md_catalog_r
 // NEW OPS BELOW: BASIC FUNCTIONALITY FOR RUNS/TIMESTEPS/THEIR ASSOCIATED ATTRS ////////////////////////////////////////////////////////////////////////////
 
 
+void metadata_network_init();
+
+
+// int metadata_init (uint64_t job_id);
+
 // registers all of the ops and opens the lua libs
 int metadata_init ();
+int metadata_init (uint64_t job_id);
 
 // registers all of the writing ops and opens the lua libs
-int metadata_init_write ();
+// int metadata_init_write ();
 
 // registers all of the reading ops and opens the lua libs
 int metadata_init_read ();
@@ -91,11 +71,11 @@ int metadata_finalize_server (const md_server &server);
 void metadata_finalize_client();
 
 
-// used by each of the activate functions
-static int metadata_activate (const md_server &server
-                          , uint64_t txn_id
-                          , md_catalog_type catalog_type
-                          );
+// // used by each of the activate functions
+// static int metadata_activate (const md_server &server
+//                           , uint64_t txn_id
+//                           , md_catalog_type catalog_type
+//                           );
 
 // changes all run attributes associated with the given transaction id to "active"
 int metadata_activate_run_attribute (const md_server &server
@@ -134,7 +114,7 @@ int metadata_activate_var (const md_server &server
 
 // for the given run (id), lists all attributes associated with the (entire) run that are active or match the given transaction id
 // e.g., for run X, retrieve all of the attributes associated with the run
-int metadata_catalog_all_run_attributes (const md_server &server
+int metadata_catalog_all_run_attributes_in_run (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t txn_id
                                         ,uint32_t &count
@@ -143,7 +123,7 @@ int metadata_catalog_all_run_attributes (const md_server &server
 
 // for the given run (id), lists all attributes associated with the (entire) run of the given type (id) that are active or match the given transaction id
 // e.g., for run X, retrieve all of the flag attributes associated with the run
-int metadata_catalog_all_run_attributes_with_type (const md_server &server
+int metadata_catalog_all_run_attributes_with_type_in_run (const md_server &server
                                         ,uint64_t run_id
                                         ,uint64_t type_id             
                                         ,uint64_t txn_id
@@ -153,7 +133,7 @@ int metadata_catalog_all_run_attributes_with_type (const md_server &server
 
 // for the given timestep (id) of the given run (id), lists all attributes associated with the (entire)timestep that are active or match the given transaction id
 // e.g., for the 100th timestep of run X, retrieve all of the attributes associated with the timestep
-int metadata_catalog_all_timestep_attributes (const md_server &server
+int metadata_catalog_all_timestep_attributes_in_timestep (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t timestep_id             
                                         ,uint64_t txn_id
@@ -164,7 +144,7 @@ int metadata_catalog_all_timestep_attributes (const md_server &server
 // for the given timestep (id) of the given run (id), lists all attributes associated with the timestep of the given type (id) 
 // that are active or match the given transaction id
 // e.g., for the 100th timestep of run X, retrieve all of the flag attributes associated with the timestep
-int metadata_catalog_all_timestep_attributes_with_type (const md_server &server
+int metadata_catalog_all_timestep_attributes_with_type_in_timestep (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t timestep_id
                                         ,uint64_t type_id             
@@ -478,6 +458,20 @@ int metadata_catalog_var (const md_server &server
                       ,std::vector<md_catalog_var_entry> &entries
                      );
 
+// create a run  table in an inactive state. Vars will be added later. Once the
+// run table is complete (the transaction is ready to commit), it can then be
+// activated to make it visible to other processes.
+// does not include the objector
+int metadata_create_run  (const md_server &server
+                        ,uint64_t &run_id   
+                        ,uint64_t job_id
+                        ,const std::string &name
+                        // ,const std::string &path
+                        ,uint64_t txn_id 
+                        ,uint64_t npx
+                        ,uint64_t npy
+                        ,uint64_t npz
+                        );
 
 // create a run in an inactive state. Timesteps/Vars/types/run attributes/timestep attributes/var attributes will be added later. Once the
 // run is complete (the transaction is ready to commit), it can then be
@@ -497,6 +491,11 @@ int metadata_create_run  (const md_server &server
                         ,const std::string &objector_funct_path
                         );
 
+int metadata_create_run  (const md_server &server
+                        ,uint64_t &run_id   
+                        ,const md_catalog_run_entry &run
+                        );
+
 // create a timestep in an inactive state. Vars/timestep attributes/var attributes will be added later. Once the
 // timestep is complete (the transaction is ready to commit), it can then be
 // activated to make it visible to other processes.
@@ -506,6 +505,9 @@ int metadata_create_timestep  (const md_server &server
                         ,const std::string &path
                         ,uint64_t txn_id 
                         );
+
+int metadata_create_timestep  (const md_server &server
+                        ,const md_catalog_timestep_entry &timestep);
 
 // create a timestep in an inactive state. Run attribtues/timestep attributes/var attributes will be added later. Once the
 // type is complete (the transaction is ready to commit), it can then be
@@ -585,6 +587,7 @@ int metadata_delete_var_by_name_path_ver (const md_server &server
 // activated to make it visible to other processes.
 int metadata_insert_run_attribute (const md_server &server
                            ,uint64_t &attribute_id
+                           ,uint64_t run_id
                            ,uint64_t type_id
                            ,uint64_t txn_id
                            ,attr_data_type data_type
@@ -673,7 +676,7 @@ int metadata_processing_var  (const md_server &server
 // for the given run (id), lists all attributes associated with the (entire) run of the given type (id) that have data that is numeric and in 
 // the given (serialized) range, and which are active or match the given transaction id
 // e.g., for run X, retrieve all of the 'high turbulence' attributes between values 1000 and 5000 associated with the run
-int metadata_catalog_all_run_attributes_with_type_range (const md_server &server
+int metadata_catalog_all_run_attributes_with_type_range_in_run (const md_server &server
                                         ,uint64_t run_id
                                         ,uint64_t type_id             
                                         ,uint64_t txn_id
@@ -686,7 +689,7 @@ int metadata_catalog_all_run_attributes_with_type_range (const md_server &server
 // for the given run (id), lists all attributes associated with the (entire) run of the given type (id) that have data that is numeric and above
 // the given (serialized) value, and which are active or match the given transaction id
 // e.g., for run X, retrieve all of the 'high turbulence' attributes above 5000 associated with the run
-int metadata_catalog_all_run_attributes_with_type_above_max (const md_server &server
+int metadata_catalog_all_run_attributes_with_type_above_max_in_run (const md_server &server
                                         ,uint64_t run_id
                                         ,uint64_t type_id             
                                         ,uint64_t txn_id
@@ -699,7 +702,7 @@ int metadata_catalog_all_run_attributes_with_type_above_max (const md_server &se
 // for the given run (id), lists all attributes associated with the (entire) run of the given type (id) that have data that is numeric and below
 // the given (serialized) value, and which are active or match the given transaction id
 // e.g., for run X, retrieve all of the 'low temperature' attributes below -100 associated with the run
-int metadata_catalog_all_run_attributes_with_type_below_min (const md_server &server
+int metadata_catalog_all_run_attributes_with_type_below_min_in_run (const md_server &server
                                         ,uint64_t run_id
                                         ,uint64_t type_id             
                                         ,uint64_t txn_id
@@ -804,7 +807,7 @@ int metadata_catalog_all_timesteps_with_var_attributes_with_type_var_dims_below_
 // for the given timestep (id) of the given run (id), lists all attributes associated with the timestep of the given type (id) 
 // that have data that is numeric and in the given (serialized) range, and which are active or match the given transaction id
 // e.g., for the 100th timestep of run X, retrieve all of the 'high turbulence' attributes between values 1000 and 5000
-int metadata_catalog_all_timestep_attributes_with_type_range (const md_server &server
+int metadata_catalog_all_timestep_attributes_with_type_range_in_timestep (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t timestep_id
                                         ,uint64_t type_id             
@@ -818,7 +821,7 @@ int metadata_catalog_all_timestep_attributes_with_type_range (const md_server &s
 // for the given timestep (id) of the given run (id), lists all attributes associated with the timestep of the given type (id) 
 // that have data that is numeric and above the given (serialized) value, and which are active or match the given transaction id
 // e.g., for the 100th timestep of run X, retrieve all of the 'high turbulence' attributes between above value 5000
-int metadata_catalog_all_timestep_attributes_with_type_above_max (const md_server &server
+int metadata_catalog_all_timestep_attributes_with_type_above_max_in_timestep (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t timestep_id
                                         ,uint64_t type_id             
@@ -832,7 +835,7 @@ int metadata_catalog_all_timestep_attributes_with_type_above_max (const md_serve
 // for the given timestep (id) of the given run (id), lists all attributes associated with the timestep of the given type (id) 
 // that have data that is numeric and below the given (serialized) value, and which are active or match the given transaction id
 // e.g., for the 100th timestep of run X, retrieve all of the 'low pressure zone' attributes below value 1000
-int metadata_catalog_all_timestep_attributes_with_type_below_min (const md_server &server
+int metadata_catalog_all_timestep_attributes_with_type_below_min_in_timestep (const md_server &server
                                         ,uint64_t run_id             
                                         ,uint64_t timestep_id
                                         ,uint64_t type_id             
@@ -1283,15 +1286,15 @@ int metadata_insert_var_attribute_by_dims_batch (const md_server &server
 //                         ,uint64_t txn_id
 //                         )
 
-// int metadata_create_type_batch (const md_server &server
-//                         // ,uint64_t &type_id
-//                         ,const std::vector<md_catalog_type_entry> &new_types
-//                         );
-
 int metadata_create_type_batch (const md_server &server
-                        ,std::vector<uint64_t> &type_ids
+                        ,uint64_t &type_id
                         ,const std::vector<md_catalog_type_entry> &new_types
                         );
+
+// int metadata_create_type_batch (const md_server &server
+//                         // ,std::vector<uint64_t> &type_ids
+//                         ,const std::vector<md_catalog_type_entry> &new_types
+//                         );
 // int metadata_create_var_batch (const md_server &server
 //                         ,uint64_t &var_id
 //                         ,uint64_t run_id
@@ -1335,5 +1338,145 @@ int metadata_insert_timestep_attribute_batch (const md_server &server
                            // ,uint64_t &attribute_id,
                            ,const std::vector<md_catalog_timestep_attribute_entry> &new_attributes
                            );
+
+
+int metadata_checkpoint_database (const md_server &server
+  								 , uint64_t job_id
+  								 , md_db_checkpoint_type checkpt_type
+  								 );
+
+
+
+
+int metadata_catalog_all_run_attributes (const md_server &server
+                                        ,uint64_t txn_id
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_run_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_run_attributes_with_type (const md_server &server
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_run_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_run_attributes_with_type_range (const md_server &server
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_run_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_run_attributes_with_type_above_max (const md_server &server
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_run_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_run_attributes_with_type_below_min (const md_server &server
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_run_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_timestep_attributes (const md_server &server
+                                        ,uint64_t run_id             
+                                        ,uint64_t txn_id
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_timestep_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_timestep_attributes_with_type (const md_server &server
+                                        ,uint64_t run_id             
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_timestep_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_timestep_attributes_with_type_range (const md_server &server
+                                        ,uint64_t run_id             
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_timestep_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_timestep_attributes_with_type_above_max (const md_server &server
+                                        ,uint64_t run_id             
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_timestep_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_timestep_attributes_with_type_below_min (const md_server &server
+                                        ,uint64_t run_id             
+                                        ,uint64_t type_id             
+                                        ,uint64_t txn_id
+                                        ,attr_data_type data_type
+                                        ,const std::string &data
+                                        ,uint32_t &count
+                                        ,std::vector<md_catalog_timestep_attribute_entry> &entries
+                                        );
+
+int metadata_catalog_all_types_with_var_attributes (const md_server &server
+                      ,uint64_t run_id
+                      ,uint64_t txn_id
+                      ,uint32_t &count
+                      ,std::vector<md_catalog_type_entry> &entries
+                     );
+
+int metadata_catalog_all_types_with_var_attributes_with_var_dims (const md_server &server
+                      ,uint64_t run_id
+                      ,uint64_t var_id
+                      ,uint64_t txn_id
+                      ,uint32_t num_dims
+                      ,const std::vector<md_dim_bounds> &dims
+                      ,uint32_t &count
+                      ,std::vector<md_catalog_type_entry> &entries
+                     );
+
+int metadata_catalog_all_types_with_var_attributes_with_var (const md_server &server
+                      ,uint64_t run_id
+                      ,uint64_t var_id
+                      ,uint64_t txn_id
+                      ,uint32_t &count
+                      ,std::vector<md_catalog_type_entry> &entries
+                     );
+
+int metadata_catalog_all_types_with_var_attributes_with_var_substr_dims (const md_server &server
+                      ,uint64_t run_id
+                      ,const std::string &var_name_substr
+                      ,uint64_t txn_id
+                      ,uint32_t num_dims
+                      ,const std::vector<md_dim_bounds> &dims
+                      ,uint32_t &count
+                      ,std::vector<md_catalog_type_entry> &entries
+                     );
+
+int metadata_catalog_all_types_with_var_attributes_with_var_substr (const md_server &server
+                      ,uint64_t run_id
+                      ,const std::string &var_name_substr
+                      ,uint64_t txn_id
+                      ,uint32_t &count
+                      ,std::vector<md_catalog_type_entry> &entries
+                     );
+
+
+
 
 #endif

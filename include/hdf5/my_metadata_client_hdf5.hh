@@ -1,30 +1,4 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+
 
 
 #ifndef MYMETADATACLIENTHDF5_HH
@@ -34,7 +8,10 @@
 #include <hdf5_hl.h>
 #include <assert.h> //needed for assert
 #include <vector>
-#include <md_timing_constants_hdf5.hh>
+// #include <md_timing_constants_hdf5.hh>
+#include <md_client_timing_constants.hh>
+#include <string>
+#include <iostream>
 
 #ifndef RC_ENUM
 #define RC_ENUM
@@ -376,14 +353,15 @@ void metadata_catalog_all_types_with_var_attributes_with_var_dims_in_timestep (h
                       	  ,std::vector<std::string> &type_names
                      	  );
 
-void metadata_insert_var_attribute_batch (hid_t var_attr_table_id, const std::vector<var_attribute_str> &attrs );
+// void metadata_insert_var_attribute_batch (hid_t var_attr_table_id, const std::vector<var_attribute_str> &attrs );
+void metadata_insert_var_attribute_batch(std::string run_name, std::string job_id, uint64_t timestep_id,
+	 const std::vector<var_attribute_str> &attrs, md_timestep_entry &timestep_entry );
 void metadata_insert_var_attribute (hid_t var_attr_table_id, var_attribute_str attr);
 
 // void metadata_create_timestep (std::string run_name, std::string job_id, uint64_t timestep_id, 
 // 						md_timestep_entry &timestep);
 
 void metadata_create_timestep(std::string run_name, std::string job_id, uint64_t timestep_id 
-						  ,hid_t run_file_id
 						  ,md_timestep_entry &timestep
 						  );
 
@@ -482,7 +460,12 @@ void metadata_catalog_all_timestep_attributes (hid_t timestep_attr_table_id
 	                      ,std::vector<non_var_attribute_str> &attrs
 						  ,bool is_timestep=true);
 
-void metadata_catalog_all_timestep_attributes_with_type (hid_t timestep_attr_table_id
+void metadata_catalog_all_timestep_attributes_with_type_in_timestep (hid_t timestep_attr_table_id
+						  ,std::string type_name
+	                      ,std::vector<non_var_attribute_str> &attrs
+						  ,bool is_timestep=true);
+
+void metadata_catalog_all_timestep_attributes_with_type (const std::vector<std::string> &timestep_file_names
 						  ,std::string type_name
 	                      ,std::vector<non_var_attribute_str> &attrs
 						  ,bool is_timestep=true);
@@ -543,7 +526,7 @@ void metadata_catalog_all_run_attributes (hid_t timestep_attr_table_id
 	                      ,std::vector<non_var_attribute_str> &attrs
 						  );
 
-void metadata_catalog_all_run_attributes_with_type (hid_t timestep_attr_table_id
+void metadata_catalog_all_run_attributes_with_type_in_run (hid_t timestep_attr_table_id
 						  ,std::string type_name
 	                      ,std::vector<non_var_attribute_str> &attrs
 						  );

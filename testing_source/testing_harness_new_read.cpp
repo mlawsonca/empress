@@ -1,32 +1,3 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-
 #include <stdio.h> //needed for printf
 #include <stdlib.h> //needed for atoi/atol/malloc/free/rand
 #include <assert.h> //needed for assert
@@ -43,19 +14,14 @@
 #include <vector>
 #include <numeric>
 
-#include <mpi.h>
-
-#include <Globals.hh>
-#include <opbox/services/dirman/DirectoryManager.hh>
-#include <gutties/Gutties.hh>
-
+#include <mpi.h>#include "dirman/DirMan.hh"
 #include <sstream>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
 #include <3d_read_for_testing.hh>
 #include <my_metadata_client.h>
-// #include <client_timing_constants.hh>
+// #include <md_client_timing_constants.hh>
 #include <client_timing_constants_read.hh>
 #include <my_metadata_client_lua_functs.h>
 
@@ -66,7 +32,7 @@ std::string default_config_string = R"EOF(
 
 nnti.logger.severity       error
 nnti.transport.name        ibverbs
-webhook.interfaces         ib0,lo
+whookie.interfaces         ib0,lo
  
 #config.additional_files.env_name.if_defined   CONFIG
 lunasa.lazy_memory_manager   malloc
@@ -78,7 +44,7 @@ dirman.type           centralized
 
 # Turn these on if you want to see more debug messages
 #bootstrap.debug           true
-#webhook.debug             true
+#whookie.debug             true
 #opbox.debug               true
 #dirman.debug              true
 #dirman.cache.others.debug true
@@ -153,9 +119,9 @@ void add_objector_output_point(int catg, int num_params_to_fetch, uint16_t read_
 
 
 
-static int setup_dirman(const string &dirman_file_path, const string &dir_path, md_server &dirman, vector<gutties::name_and_node_t> &server_nodes, int rank, uint32_t num_servers, uint32_t num_clients);
-// static void setup_servers(std::vector<md_server> &servers, uint32_t num_servers, const vector<gutties::name_and_node_t> &server_nodes);
-static void setup_server(int rank, uint32_t num_servers, const vector<gutties::name_and_node_t> &server_nodes, md_server &server);
+static int setup_dirman(const string &dirman_file_path, const string &dir_path, md_server &dirman, vector<faodel::NameAndNode> &server_nodes, int rank, uint32_t num_servers, uint32_t num_clients);
+// static void setup_servers(std::vector<md_server> &servers, uint32_t num_servers, const vector<faodel::NameAndNode> &server_nodes);
+static void setup_server(int rank, uint32_t num_servers, const vector<faodel::NameAndNode> &server_nodes, md_server &server);
 int extra_testing_collective(const md_server &server, int rank, uint32_t num_servers, uint32_t num_client_procs, const md_catalog_run_entry &run, 
                   const vector<md_dim_bounds> &chunk_dims);
 
@@ -253,7 +219,7 @@ int main(int argc, char **argv) {
     uint64_t run_id = 1;
     uint64_t txn_id = -1;
 
-    vector<gutties::name_and_node_t> server_nodes;
+    vector<faodel::NameAndNode> server_nodes;
     server_nodes.resize(num_servers);
 
     srand(rank);
@@ -349,7 +315,7 @@ int main(int argc, char **argv) {
     if (rc != RC_OK) {
         add_timing_point(ERR_CATALOG_RUN); 
         goto cleanup;                 
-        error_log << "Error cataloging the run entries. Proceeding \n";
+        error_log << "Error cataloging the run entries. Proceeding" << endl;
     }
     add_timing_point(CATALOG_RUN_DONE);
 
@@ -372,7 +338,7 @@ int main(int argc, char **argv) {
             if (rc != RC_OK) {
                 add_timing_point(ERR_CATALOG_VAR); 
                 goto cleanup;                 
-                error_log << "Error cataloging the var entries. Proceeding \n";
+                error_log << "Error cataloging the var entries. Proceeding" << endl;
             }
             extreme_debug_log << "entries.size(): " << entries.size() << endl;
             all_var_entries.push_back(entries);
@@ -883,7 +849,7 @@ cleanup:
     // free(total_times)
     MPI_Barrier (MPI_COMM_WORLD);
     MPI_Finalize();
-    gutties::bootstrap::Finish();
+    faodel::bootstrap::Finish();
     debug_log << "got to cleanup7" << endl;
 
     return rc;
@@ -891,20 +857,20 @@ cleanup:
 }
 
 static int setup_dirman(const string &dirman_file_path, const string &dir_path, md_server &dirman, 
-                        vector<gutties::name_and_node_t> &server_procs, int rank, uint32_t num_servers, uint32_t num_clients) {
+                        vector<faodel::NameAndNode> &server_procs, int rank, uint32_t num_servers, uint32_t num_clients) {
 
     bool ok;
     int rc;
     char *serialized_c_str;
     int length_ser_c_str;
-    // gutties::name_and_node_t *server_ary;
+    // faodel::NameAndNode *server_ary;
 
     if(rank == 0) { 
         struct stat buffer;
         bool dirman_initted = false;
         std::ifstream file;
         string dirman_hexid;
-        DirectoryInfo dir;
+        faodel::DirectoryInfo dir;
 
         while (!dirman_initted) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -923,42 +889,42 @@ static int setup_dirman(const string &dirman_file_path, const string &dir_path, 
         debug_log << "just got the hexid: " << dirman_hexid << endl;
 
 
-        gutties::Configuration config(default_config_string);
+        faodel::Configuration config(default_config_string);
         config.Append("dirman.root_node", dirman_hexid);
-        config.Append("webhook.port", to_string(4000+num_servers+rank)); //note if you up number of servers you'll want to up this
+        config.Append("whookie.port", to_string(4000+num_servers+rank)); //note if you up number of servers you'll want to up this
         config.AppendFromReferences();
         debug_log << "just configged" << endl; 
-        gutties::bootstrap::Start(config, opbox::bootstrap);
+        faodel::bootstrap::Start(config, opbox::bootstrap);
 
         //Add the directory manager's URL to the config string so the clients know
         //Where to access the directory 
         //-------------------------------------------
         //TODO: This connect is temporarily necessary
-        gutties::nodeid_t dirman_nodeid(dirman_hexid);
+        faodel::nodeid_t dirman_nodeid(dirman_hexid);
         extreme_debug_log << "Dirman node ID " << dirman_nodeid.GetHex() << " " << dirman_nodeid.GetIP() << " port " << dirman_nodeid.GetPort() << endl;
         dirman.name_and_node.node = dirman_nodeid;
         extreme_debug_log << "about to connect peer to node" << endl;
-        rc = net::Connect(&dirman.peer_ptr, dirman.name_and_node.node);
+        rc = opbox::net::Connect(&dirman.peer_ptr, dirman.name_and_node.node);
         assert(rc==RC_OK && "could not connect");
         extreme_debug_log << "just connected" << endl;
         //-------------------------------------------
         extreme_debug_log << "app name is " << dir_path << endl;
-        ok = dirman::GetRemoteDirectoryInfo(gutties::ResourceURL(dir_path), &dir);
+        ok = dirman::GetRemotefaodel::DirectoryInfo(faodel::ResourceURL(dir_path), &dir);
         assert(ok && "Could not get info about the directory?");
         extreme_debug_log << "just got directory info" << endl;
 
-        while( dir.children.size() < num_servers) {
-            debug_log << "dir.children.size() < num_servers. dir.children.size(): "  << dir.children.size() << " num_servers: " << num_servers << endl;
+        while( dir.members.size() < num_servers) {
+            debug_log << "dir.members.size() < num_servers. dir.members.size(): "  << dir.members.size() << " num_servers: " << num_servers << endl;
 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            ok = dirman::GetRemoteDirectoryInfo(gutties::ResourceURL(dir_path), &dir);
-            extreme_debug_log << "and now dir.children.size() < num_servers. dir.children.size(): "  << dir.children.size() << " num_servers: " << num_servers << endl;
+            ok = dirman::GetRemotefaodel::DirectoryInfo(faodel::ResourceURL(dir_path), &dir);
+            extreme_debug_log << "and now dir.members.size() < num_servers. dir.members.size(): "  << dir.members.size() << " num_servers: " << num_servers << endl;
 
             assert(ok && "Could not get info about the directory?");
             extreme_debug_log << "just got directory info" << endl;
         }
         debug_log << "dir init is done" << endl;
-        server_procs = dir.children;
+        server_procs = dir.members;
         extreme_debug_log << "about to serialize server_procs \n";
         stringstream ss;
         boost::archive::text_oarchive oa(ss);
@@ -993,12 +959,12 @@ static int setup_dirman(const string &dirman_file_path, const string &dir_path, 
 
         //todo - should decide if we want to have a dedicated dirman, if 
         //not, just need to adjust so "dirman" is server rank 0 
-        gutties::Configuration config(default_config_string);
+        faodel::Configuration config(default_config_string);
         config.Append("dirman.root_node", server_procs[0].node.GetHex());
-        config.Append("webhook.port", to_string(4000+num_servers+rank)); //note if you up number of servers you'll want to up this
+        config.Append("whookie.port", to_string(4000+num_servers+rank)); //note if you up number of servers you'll want to up this
         config.AppendFromReferences();
         debug_log << "just configged" << endl; 
-        gutties::bootstrap::Start(config, opbox::bootstrap);
+        faodel::bootstrap::Start(config, opbox::bootstrap);
 
     } 
     if (length_ser_c_str > 0) {
@@ -1018,23 +984,23 @@ static int setup_dirman(const string &dirman_file_path, const string &dir_path, 
  } 
 
 static void setup_server(int rank, uint32_t num_servers, 
-        const vector<gutties::name_and_node_t> &server_nodes, md_server &server) {
+        const vector<faodel::NameAndNode> &server_nodes, md_server &server) {
 
     int server_indx = rank % num_servers; 
     server.name_and_node = server_nodes[server_indx];
-    net::Connect(&server.peer_ptr, server.name_and_node.node);
+    opbox::net::Connect(&server.peer_ptr, server.name_and_node.node);
     server.URL = server.name_and_node.node.GetHex();
     extreme_debug_log << "server.URL: " << server.URL << endl;
     extreme_debug_log << "server_indx: " << server_indx << endl;
 }
 
-// static void setup_servers(std::vector<md_server> &servers, uint32_t num_servers, const vector<gutties::name_and_node_t> &server_nodes) {
+// static void setup_servers(std::vector<md_server> &servers, uint32_t num_servers, const vector<faodel::NameAndNode> &server_nodes) {
 //     debug_log << "num_servers: " << to_string(num_servers) << endl;
 
 //     for(int i=0; i < num_servers; i++) {
 //         md_server server;
 //         server.name_and_node = server_nodes[i];
-//         net::Connect(&server.peer_ptr, server.name_and_node.node);
+//         opbox::net::Connect(&server.peer_ptr, server.name_and_node.node);
 //         server.URL = server.name_and_node.node.GetHex();
 //         extreme_debug_log << "server.URL: " << server.URL << endl;
 //         servers.push_back(server);

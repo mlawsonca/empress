@@ -1,0 +1,122 @@
+#include <OpCatalogTypeMetaCommon.hh>
+#include <server_timing_constants_new.hh>
+#include <sql_helper_functs.hh>
+#include <OpCoreServer.hh>
+
+extern sqlite3 * get_database(uint64_t job_id, md_query_type query_type, bool &trans_active);
+extern void close_database(uint64_t job_id);
+extern int callback (void * NotUsed, int argc, char ** argv, char ** ColName);
+
+
+using namespace std;
+
+int md_catalog_type_stub (sqlite3 *db, const md_catalog_type_args &args, 
+                          std::vector<md_catalog_type_entry> &entries,
+                          uint32_t &count);
+
+
+WaitingType OpCatalogTypeMeta::handleMessage(bool rdma, message_t *incoming_msg) {
+  
+    int rc;
+    md_catalog_type_args args;
+    std::vector<md_catalog_type_entry> entries;
+    uint32_t count = 0;
+    bool trans_active;
+
+    deArchiveMsgFromClient(rdma, incoming_msg, args);
+    add_timing_point(OP_CATALOG_TYPE_DEARCHIVE_MSG_FROM_CLIENT);
+
+    sqlite3 *db = get_database(args.job_id, args.query_type, trans_active);
+    // cout << "OpCatalogTypeMeta: trans_active: " << trans_active << endl; 
+    if(!trans_active) {
+        rc = md_catalog_type_stub(db, args, entries, count);
+    }
+    else {
+        rc = RC_DB_BUSY;
+    }
+    // cout << "OpCatalogTypeMeta: rc: " << rc << endl; 
+
+    add_timing_point(OP_CATALOG_TYPE_MD_CATALOG_TYPE_STUB);
+
+    // std::cout << "num of entries is " << entries.size() << std::endl;
+
+    std::string serial_str = serializeMsgToClient(entries, count, rc);
+    add_timing_point(OP_CATALOG_TYPE_SERIALIZE_MSG_FOR_CLIENT);
+
+    createOutgoingMessage(dst, 
+                          0, //Not expecting a reply
+                          dst_mailbox,
+                          serial_str);
+    add_timing_point(OP_CATALOG_TYPE_CREATE_MSG_FOR_CLIENT);
+    
+    opbox::net::SendMsg(peer, ldo_msg);
+    state=State::done;
+    add_timing_point(OP_CATALOG_TYPE_SEND_MSG_TO_CLIENT_OP_DONE);
+    return WaitingType::done_and_destroy;
+
+}
+
+
+
+// extern int callback (void * NotUsed, int argc, char ** argv, char ** ColName);
+
+
+int md_catalog_type_stub (sqlite3 *db, const md_catalog_type_args &args, 
+                          std::vector<md_catalog_type_entry> &entries,
+                          uint32_t &count)
+{
+    int rc;
+    sqlite3_stmt * stmt = NULL;
+    const char * tail = NULL;
+    const char * query = "select * from type_catalog where run_id = ? "
+  // "order by name, version";
+  "order by id";
+
+    size_t size = 0;
+
+
+    // char *err_msg = 0;
+    // char *sql = "SELECT * FROM type_catalog";
+    // cout << "starting type catalog \n";
+    // rc = sqlite3_exec(db, sql, callback, 0, &err_msg);
+    // cout << "done with type catalog \n";
+
+    rc = sqlite3_prepare_v2 (db, "select count (*) from type_catalog where run_id = ? ", -1, &stmt, &tail); //assert (rc == SQLITE_OK);
+    rc = sqlite3_bind_int64 (stmt, 1, args.run_id); //assert (rc == SQLITE_OK);
+
+    rc = sqlite3_step (stmt); 
+    if (rc != SQLITE_ROW && rc != SQLITE_DONE)
+    {
+        fprintf (stderr, "Error md_catalog_type_stub: Line: %d SQL error (%d): %s\n", __LINE__, rc, sqlite3_errmsg (db));
+        close_database(args.job_id);
+        goto cleanup;
+    } 
+    //assert (rc == SQLITE_ROW || rc == SQLITE_DONE);
+    count = sqlite3_column_int64 (stmt, 0);
+    rc = sqlite3_finalize (stmt); //assert (rc == SQLITE_OK);;
+
+    // cout << "selecting where run_id: " << args.run_id << ", count: " << count << endl;
+
+    if (count > 0) {
+        entries.reserve(count);
+
+        rc = sqlite3_prepare_v2 (db, query, -1, &stmt, &tail); //assert (rc == SQLITE_OK);
+        if (rc != SQLITE_OK)
+        {
+            fprintf (stderr, "Error md_catalog_type_stub: Line: %d SQL error (%d): %s\n", __LINE__, rc, sqlite3_errmsg (db));
+            close_database(args.job_id);
+            goto cleanup;
+        }
+        rc = sqlite3_bind_int64 (stmt, 1, args.run_id); //assert (rc == SQLITE_OK);
+
+        rc = sql_retrieve_types(stmt, entries);
+
+        rc = sqlite3_finalize (stmt);   
+    }
+//printf ("rows in var_catalog: %d\n", count);
+       
+
+cleanup:
+
+    return rc;
+}

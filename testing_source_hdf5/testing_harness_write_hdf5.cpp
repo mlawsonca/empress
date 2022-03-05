@@ -1,32 +1,3 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-
 #include <stdlib.h> //needed for atoi/atol/malloc/free/rand
 #include <stdint.h> //needed for uint
 #include <vector>
@@ -37,10 +8,7 @@
 #include <math.h> //needed for pow()
 #include <sys/time.h> //needed for timeval
 #include <float.h> //needed for DBL_MAX
-#include <numeric> //needed for accumulate
-
-
-#include <mpi.h>
+#include <numeric> //needed for accumulate#include <mpi.h>
 #include <hdf5_hl.h>
 #include <hdf5.h>
 
@@ -198,7 +166,6 @@ int main(int argc, char **argv) {
     uint32_t version2 = 2;
 
   	//add the '0' for the type version 
-    char run_timestep_type_names[2][10] = {"max_temp0", "min_temp0"}; 
     int num_run_timestep_types = 2;
 
     uint32_t x_length_per_proc = total_x_length / num_x_procs; //todo - deal with edge case?
@@ -221,7 +188,7 @@ int main(int argc, char **argv) {
     double all_timestep_temp_mins_for_all_procs[num_timesteps];
 
     //reminder - if you don't do this, rank 0 and 1 have the same outputs
-    srand(rank+1);
+    // srand(rank+1);
     extreme_debug_log << "rank: " << rank << " first rgn: " << rand() << endl;
 
     //--------------------------------------------------------------
@@ -353,6 +320,8 @@ int main(int argc, char **argv) {
         // add_timing_point(OPEN_TIMESTEP_DONE);
 
     	
+        srand(rank*10000+1+timestep_num);
+
         add_timing_point(CREATE_VARS_AND_ATTRS_FOR_NEW_TIMESTEP_START); 
 
 	    for (int var_indx = 0; var_indx < num_vars; var_indx++) {

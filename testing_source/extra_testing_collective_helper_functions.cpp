@@ -1,32 +1,3 @@
-/* 
- * Copyright 2018 National Technology & Engineering Solutions of
- * Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS,
- * the U.S. Government retains certain rights in this software.
- *
- * The MIT License (MIT)
- * 
- * Copyright (c) 2018 Sandia Corporation
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
-
-
 
 #include <my_metadata_client.h>
 
@@ -40,10 +11,7 @@
 
 //includes the print attr functs
 #include <testing_harness_debug_helper_functions.hh>
-#include <hdf5_helper_functions_read.hh>
-
-
-#include <unordered_set>
+#include <hdf5_helper_functions_read.hh>#include <unordered_set>
 
 using namespace std;
 
@@ -135,7 +103,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
         }
     }
     else {
-        error_log << "Error cataloging the new set of type entries. Proceeding \n";
+        error_log << "Error cataloging the new set of type entries. Proceeding" << endl;
     }
     add_timing_point(CATALOG_RUN_DONE);
 
@@ -149,7 +117,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
         }
     }
     else {
-        error_log << "Error cataloging the new set of type entries. Proceeding \n";
+        error_log << "Error cataloging the new set of type entries. Proceeding" << endl;
     }
     add_timing_point(CATALOG_TYPE_DONE);
 
@@ -166,7 +134,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
 	        }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_RUN_ATTRIBUTES_DONE);
@@ -186,7 +154,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
 	add_timing_point(CATALOG_TIMESTEP_START);
     rc = metadata_catalog_timestep (server, run_id, txn_id, count, timestep_entries);
     if (rc != RC_OK) {
-        error_log << "Error cataloging the post deletion set of timestep entries. Proceeding \n";
+        error_log << "Error cataloging the post deletion set of timestep entries. Proceeding" << endl;
     }
     if(testing_logging || (zero_rank_logging && rank == 0)) {
         zero_rank_log << "timestep catalog for run_id " << run_id << " and txn_id: " << txn_id << " for server: " << rank << " \n";
@@ -210,7 +178,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
 		        }
 		    }
 		    else {
-		        error_log << "Error getting the matching attribute list. Proceeding \n";
+		        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 		    }
 		}
         add_timing_point(CATALOG_ALL_TIMESTEP_ATTRIBUTES_DONE);
@@ -231,7 +199,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
         add_timing_point(CATALOG_VAR_START);    	
         rc = metadata_catalog_var(server, run_id, timestep.timestep_id, txn_id, count, var_entries);
         if (rc != RC_OK) {
-            error_log << "Error cataloging the post deletion set of var_entries. Proceeding \n";
+            error_log << "Error cataloging the post deletion set of var_entries. Proceeding" << endl;
         }
         if(testing_logging || (zero_rank_logging && rank == 0)) {
 	        zero_rank_log << "var catalog for run_id " << run_id << " and timestep_id " << timestep.timestep_id << " and txn_id: " << txn_id << 
@@ -256,7 +224,7 @@ int catalog_all_metadata_for_run (const md_server &server, int rank, uint32_t nu
 	                // }
 	            }
 	            else {
-	                error_log << "Error getting the matching attribute list. Proceeding \n";
+	                error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	            }
 	        }
         	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_VAR_BY_ID_DONE);    	
@@ -323,7 +291,7 @@ int catalog_types_in_timestep_functs ( const md_server &server, int rank, uint32
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching type catalog. Proceeding \n";
+	        error_log << "Error getting the matching type catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TYPES_WITH_VAR_ATTRIBUTES_IN_TIMESTEP_DONE);
@@ -353,7 +321,7 @@ int catalog_types_in_timestep_functs ( const md_server &server, int rank, uint32
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching type catalog. Proceeding \n";
+	        error_log << "Error getting the matching type catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TYPES_WITH_VAR_ATTRIBUTES_WITH_VAR_IN_TIMESTEP_DONE);
@@ -388,7 +356,7 @@ int catalog_types_in_timestep_functs ( const md_server &server, int rank, uint32
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching type catalog. Proceeding \n";
+	        error_log << "Error getting the matching type catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TYPES_WITH_VAR_ATTRIBUTES_WITH_VAR_DIMS_IN_TIMESTEP_DONE);
@@ -431,7 +399,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
     // //Should be empty now 
     // rc = metadata_catalog_timestep (server, run_id, txn_id, count, timestep_entries);
     // if (rc != RC_OK) {
-    //     error_log << "Error set of timestep entries. Proceeding \n";
+    //     error_log << "Error set of timestep entries. Proceeding" << endl;
     // }
     // if(testing_logging || (zero_rank_logging && rank == 0)) {
 	    // zero_rank_log << "timestep catalog for run_id " << run_id << " and txn_id " << txn_id << ": \n";
@@ -449,7 +417,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
         }
     }
     else {
-        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
     }
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_DONE);
 
@@ -468,7 +436,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_DONE);
@@ -503,7 +471,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_RANGE_DONE);
@@ -539,7 +507,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_ABOVE_MAX_DONE);
@@ -574,7 +542,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_BELOW_MIN_DONE);
@@ -610,7 +578,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_DONE);
@@ -651,7 +619,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_RANGE_DONE);
@@ -693,7 +661,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 		    // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_ABOVE_MAX_DONE);
@@ -735,7 +703,7 @@ int catalog_timesteps_with_var_or_attr_functs ( const md_server &server, int ran
 	     //    }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_BELOW_MIN_DONE);
@@ -783,7 +751,7 @@ int catalog_run_attributes_with_type_or_val_functs ( const md_server &server, in
     //     print_run_attr_data(count, run_attr_entries);
     // }
     // else {
-    //     error_log << "Error getting the matching run attr catalog. Proceeding \n";
+    //     error_log << "Error getting the matching run attr catalog. Proceeding" << endl;
     // }
    	vector<md_catalog_run_attribute_entry> all_run_attr_entries;
 
@@ -801,7 +769,7 @@ int catalog_run_attributes_with_type_or_val_functs ( const md_server &server, in
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching run attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching run attr catalog. Proceeding" << endl;
 	    }
 	}
     add_timing_point(CATALOG_ALL_RUN_ATTRIBUTES_WITH_TYPE_DONE);
@@ -837,7 +805,7 @@ int catalog_run_attributes_with_type_or_val_functs ( const md_server &server, in
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching run attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching run attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_RUN_ATTRIBUTES_WITH_TYPE_RANGE_DONE);
@@ -873,7 +841,7 @@ int catalog_run_attributes_with_type_or_val_functs ( const md_server &server, in
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching run attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching run attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_RUN_ATTRIBUTES_WITH_TYPE_ABOVE_MAX_DONE);	
@@ -910,7 +878,7 @@ int catalog_run_attributes_with_type_or_val_functs ( const md_server &server, in
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching run attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching run attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_RUN_ATTRIBUTES_WITH_TYPE_BELOW_MIN_DONE);	
@@ -954,7 +922,7 @@ int catalog_timestep_attributes_with_type_or_val_functs ( const md_server &serve
     //     print_timestep_attr_data(count, timestep_attr_entries);
     // }
     // else {
-    //     error_log << "Error getting the matching timestep attr catalog. Proceeding \n";
+    //     error_log << "Error getting the matching timestep attr catalog. Proceeding" << endl;
     // }
    	vector<md_catalog_timestep_attribute_entry> all_timestep_attr_entries;
 
@@ -972,7 +940,7 @@ int catalog_timestep_attributes_with_type_or_val_functs ( const md_server &serve
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEP_ATTRIBUTES_WITH_TYPE_DONE);	
@@ -1008,7 +976,7 @@ int catalog_timestep_attributes_with_type_or_val_functs ( const md_server &serve
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEP_ATTRIBUTES_WITH_TYPE_RANGE_DONE);	
@@ -1045,7 +1013,7 @@ int catalog_timestep_attributes_with_type_or_val_functs ( const md_server &serve
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEP_ATTRIBUTES_WITH_TYPE_ABOVE_MAX_DONE);	
@@ -1082,7 +1050,7 @@ int catalog_timestep_attributes_with_type_or_val_functs ( const md_server &serve
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep attr catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep attr catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEP_ATTRIBUTES_WITH_TYPE_BELOW_MIN_DONE);	
@@ -1138,7 +1106,7 @@ int catalog_all_var_attributes_with_dims ( const md_server &server, int rank, ui
 	       //  }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_DIMS_DONE);	
@@ -1213,7 +1181,7 @@ int catalog_var_attributes_with_var_functs ( const md_server &server, int rank, 
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_VAR_BY_NAME_VER_DONE);	
@@ -1268,7 +1236,7 @@ int catalog_var_attributes_with_var_functs ( const md_server &server, int rank, 
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_VAR_DIMS_BY_NAME_VER_DONE);	
@@ -1337,7 +1305,7 @@ int catalog_var_attributes_with_type_functs ( const md_server &server, int rank,
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_BY_NAME_VER_DONE);	
@@ -1422,7 +1390,7 @@ int catalog_var_attributes_with_type_dims_functs ( const md_server &server, int 
 	rc = catalog_var_attributes_with_type_functs ( server, rank, num_servers, num_client_procs, run, vars, 
 									timestep_id, type, proc_dims, txn_id );
 	if (rc != RC_OK) {
-	    error_log << "Error with catalog_var_attributes_with_type_functs. Proceeding \n";
+	    error_log << "Error with catalog_var_attributes_with_type_functs. Proceeding" << endl;
 	}
 	
 
@@ -1447,7 +1415,7 @@ int catalog_var_attributes_with_type_dims_functs ( const md_server &server, int 
 	      //   }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_DIMS_BY_NAME_VER_DONE);	
@@ -1539,7 +1507,7 @@ int catalog_var_attributes_with_type_var ( const md_server &server, int rank, ui
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_BY_NAME_VER_DONE);	
@@ -1606,7 +1574,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	rc = catalog_var_attributes_with_type_var (server, rank, num_servers, num_client_procs, run, 
 										rare_type, vars, var, txn_id, proc_dims); 
     if (rc != RC_OK) {
-        error_log << "Error with catalog_var_attributes_with_type_var. Proceeding \n";
+        error_log << "Error with catalog_var_attributes_with_type_var. Proceeding" << endl;
     }
 
     // rc = retrieveObjNamesAndDataForAttrCatalog(data_outputs, server, new_run, var.run_id, var.timestep_id, txn_id, var_attr_entries );
@@ -1633,7 +1601,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_RANGE_DONE);	
@@ -1701,7 +1669,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_ABOVE_MAX_DONE);	
@@ -1769,7 +1737,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	      //   }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_BELOW_MIN_DONE);	
@@ -1843,7 +1811,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_BY_NAME_VER_DONE);	
@@ -1920,7 +1888,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_RANGE_DONE);	
@@ -1998,7 +1966,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_ABOVE_MAX_DONE);	
@@ -2076,7 +2044,7 @@ int catalog_var_attributes_with_type_var_or_val_functs ( const md_server &server
 		    // }
 	    }
 	    else {
-	        error_log << "Error getting the matching attribute list. Proceeding \n";
+	        error_log << "Error getting the matching attribute list. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_DIMS_BELOW_MIN_DONE);	
@@ -2164,7 +2132,7 @@ int catalog_types_with_var_substr_in_timestep_functs ( const md_server &server, 
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching type catalog. Proceeding \n";
+	        error_log << "Error getting the matching type catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TYPES_WITH_VAR_ATTRIBUTES_WITH_VAR_SUBSTR_IN_TIMESTEP_DONE);	
@@ -2201,7 +2169,7 @@ int catalog_types_with_var_substr_in_timestep_functs ( const md_server &server, 
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching type catalog. Proceeding \n";
+	        error_log << "Error getting the matching type catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TYPES_WITH_VAR_ATTRIBUTES_WITH_VAR_SUBSTR_DIMS_IN_TIMESTEP_DONE);	
@@ -2248,7 +2216,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
         // }
     }
     else {
-        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
     }
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_SUBSTR_DONE);	
 
@@ -2269,7 +2237,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	    //     }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DONE);	
@@ -2304,7 +2272,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_RANGE_DONE);	
@@ -2341,7 +2309,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_ABOVE_MAX_DONE);	
@@ -2378,7 +2346,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_BELOW_MIN_DONE);	
@@ -2415,7 +2383,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_DONE);	
@@ -2457,7 +2425,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_RANGE_DONE);	
@@ -2500,7 +2468,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_ABOVE_MAX_DONE);	
@@ -2543,7 +2511,7 @@ int catalog_timesteps_with_var_substr_or_val_functs ( const md_server &server, i
 	        // }
 	    }
 	    else {
-	        error_log << "Error getting the matching timestep catalog. Proceeding \n";
+	        error_log << "Error getting the matching timestep catalog. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_TIMESTEPS_WITH_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_BELOW_MIN_DONE);	
@@ -2597,7 +2565,7 @@ int catalog_var_attributes_with_var_name_substr_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_VAR_SUBSTR_DONE);	
@@ -2651,7 +2619,7 @@ int catalog_var_attributes_with_var_name_substr_functs ( const md_server &server
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_var_substr_dims. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_var_substr_dims. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_VAR_SUBSTR_DIMS_DONE);	
@@ -2725,7 +2693,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DONE);	
@@ -2795,7 +2763,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_range. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_range. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_RANGE_DONE);	
@@ -2867,7 +2835,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_above_max. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_above_max. Proceeding" << endl;
 	    } 
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_ABOVE_MAX_DONE);	
@@ -2939,7 +2907,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	      //   }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_below_min. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_below_min. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_BELOW_MIN_DONE);	
@@ -3088,7 +3056,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_range. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_range. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_RANGE_DONE);	
@@ -3166,7 +3134,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_above_max. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_above_max. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_ABOVE_MAX_DONE);	
@@ -3244,7 +3212,7 @@ int catalog_var_attributes_with_type_var_name_substr_or_val_functs ( const md_se
 	        // }
 	    }
 	    else {
-	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_below_min. Proceeding \n";
+	        error_log << "Error metadata_catalog_all_var_attributes_with_type_var_substr_dims_below_min. Proceeding" << endl;
 	    }
 	}
 	add_timing_point(CATALOG_ALL_VAR_ATTRIBUTES_WITH_TYPE_VAR_SUBSTR_DIMS_BELOW_MIN_DONE);
